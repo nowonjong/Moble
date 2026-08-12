@@ -37,20 +37,12 @@ namespace SushiKioskAdmin.Views
             // CSV 파일 읽어서 데이터 로드
             LoadUserFromCsv();
 
-            // 컬럼 자동 생성 활성화 (디자이너와 충돌 방지)
-            dgvUserList.AutoGenerateColumns = true;
-
             // DataGridView 데이터 바인딩
             dgvUserList.AutoGenerateColumns = true;
             dgvUserList.DataSource = userTable;
             dgvUserList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
-            // 포인트 열 너비를 코드로 강제 조절하는 구문은 에러를 유발하므로 제거하고, 
-            // 천단위 콤마 서식(Format)만 안전하게 지정합니다.
-            if (dgvUserList.Columns.Contains("포인트"))
-            {
-                dgvUserList.Columns["포인트"].DefaultCellStyle.Format = "N0";
-            }
+            dgvUserList.Columns["포인트"].DefaultCellStyle.Format = "N0";
 
             // 헤더 스타일 회색 고정
             dgvUserList.EnableHeadersVisualStyles = false;
@@ -361,31 +353,23 @@ namespace SushiKioskAdmin.Views
 
         private void UcUserManagement_Load(object sender, EventArgs e)
         {
-            // 화면에 완전히 로드된 이후 안전하게 열 너비 설정
-            if (dgvUserList.Columns.Contains("회원번호"))
+            // 반복되던 컬럼 너비 설정을 배열과 반복문으로 압축
+            var columnWidths = new (string ColumnName, int Width)[]
             {
-                dgvUserList.Columns["회원번호"].Width = 80;
-                dgvUserList.Columns["회원번호"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            }
-            if (dgvUserList.Columns.Contains("회원명"))
+                ("회원번호", 80),
+                ("회원명", 70),
+                ("연락처", 100),
+                ("포인트", 70),
+                ("가입일자", 80)
+            };
+
+            foreach (var col in columnWidths)
             {
-                dgvUserList.Columns["회원명"].Width = 70;
-                dgvUserList.Columns["회원명"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            }
-            if (dgvUserList.Columns.Contains("연락처"))
-            {
-                dgvUserList.Columns["연락처"].Width = 100;
-                dgvUserList.Columns["연락처"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            }
-            if (dgvUserList.Columns.Contains("포인트"))
-            {
-                dgvUserList.Columns["포인트"].Width = 70;
-                dgvUserList.Columns["포인트"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
-            }
-            if (dgvUserList.Columns.Contains("가입일자"))
-            {
-                dgvUserList.Columns["가입일자"].Width = 80;
-                dgvUserList.Columns["가입일자"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                if (dgvUserList.Columns.Contains(col.ColumnName))
+                {
+                    dgvUserList.Columns[col.ColumnName].Width = col.Width;
+                    dgvUserList.Columns[col.ColumnName].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                }
             }
         }
     }

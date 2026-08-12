@@ -22,11 +22,11 @@ namespace SushiKioskAdmin.Views
         // ==========================================
 
         private void InitMenuData()
-
         {
-            cmbCategory.SelectedIndex = 0;
+            if (cmbCategory.Items.Count > 0)
+                cmbCategory.SelectedIndex = 0;
 
-            // 데이터테이블 컬럼 구조 생성 (접시등급 열 제외)
+            // 데이터테이블 컬럼 구조 생성
             menuTable = new DataTable();
             menuTable.Columns.Add("메뉴ID", typeof(int));
             menuTable.Columns.Add("메뉴명", typeof(string));
@@ -41,24 +41,28 @@ namespace SushiKioskAdmin.Views
             dgvMenuList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvMenuList.Columns["가격"].DefaultCellStyle.Format = "N0";
 
-            // 헤더 회색 고정 (연파란색 하이라이트 제거)
+            // 헤더 스타일 회색 고정
             dgvMenuList.EnableHeadersVisualStyles = false;
             dgvMenuList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvMenuList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
 
-            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
+            // 열 헤더 높이 및 고정 설정
             dgvMenuList.ColumnHeadersHeight = 30;
-
-            // 높이를 자동으로 늘어나지 않게 고정
             dgvMenuList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
         /// <summary>
-        /// CSV 파일 읽어서 메뉴 ID, 메뉴명, 가격 정보 로드
+        /// CSV 파일 읽어서 메뉴 정보 로드 (실행 파일 바로 옆 또는 Resources 폴더 대응)
         /// </summary>
         private void LoadMenuFromCsv()
         {
             string csvPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
+
+            if (!File.Exists(csvPath))
+            {
+                // 없으면 Resources 폴더 경로도 체크
+                csvPath = Path.Combine(Application.StartupPath, "Resources", "susi_menu.csv");
+            }
 
             if (!File.Exists(csvPath))
             {
@@ -72,7 +76,7 @@ namespace SushiKioskAdmin.Views
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // CSV 구조: 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격
+                // CSV 구조: 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격 (, 5:품절여부 등 확장 가능)
                 string[] parts = line.Split(',');
                 if (parts.Length >= 5)
                 {
@@ -80,15 +84,51 @@ namespace SushiKioskAdmin.Views
                         int.TryParse(parts[4].Trim(), out int price))
                     {
                         string menuName = parts[1].Trim();
-                        menuTable.Rows.Add(menuId, menuName, price, "판매중");
+                        // CSV에 품절여부 필드가 추가되어 있다면 반영, 아니면 기본 "판매중"
+                        string status = (parts.Length >= 6 && !string.IsNullOrWhiteSpace(parts[5])) ? parts[5].Trim() : "판매중";
+
+                        menuTable.Rows.Add(menuId, menuName, price, status);
                     }
                 }
             }
         }
 
         /// <summary>
-        /// 선택한 카테고리 텍스트에서 가격(숫자)을 추출
+        /// 변경된 전체 메뉴 목록을 CSV 파일에 저장 (동기화)
         /// </summary>
+        private void SaveAllMenusToCsv()
+        {
+            try
+            {
+                string csvPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
+                StringBuilder sb = new StringBuilder();
+
+                foreach (DataRow row in menuTable.Rows)
+                {
+                    if (row.RowState == DataRowState.Deleted) continue;
+
+                    int id = Convert.ToInt32(row["메뉴ID"]);
+                    string name = row["메뉴명"].ToString();
+                    int price = Convert.ToInt32(row["가격"]);
+                    string status = row["품절여부"].ToString();
+
+                    // 기존 CSV 구조(ID, 한글명, 일어명, 영어명, 가격, 품절여부) 호환 유지
+                    // 일어명/영어명이 따로 없다면 빈 값 또는 이름으로 대체
+                    sb.AppendLine($"{id},{name},{name},{name},{price},{status}");
+                }
+
+                File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("CSV 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ==========================================
+        // 2. 헬퍼 메서드 (가격 및 카테고리 매핑)
+        // ==========================================
+
         private int GetPriceFromCategory(string category)
         {
             if (string.IsNullOrEmpty(category)) return 1000;
@@ -103,9 +143,6 @@ namespace SushiKioskAdmin.Views
             return 1000;
         }
 
-        /// <summary>
-        /// 가격 및 메뉴명에 따라 카테고리 콤보박스 항목 자동 지정
-        /// </summary>
         private string GetCategoryNameByPrice(int price, string menuName)
         {
             if (menuName.Contains("사이다") || menuName.Contains("콜라") || menuName.Contains("음료"))
@@ -124,7 +161,7 @@ namespace SushiKioskAdmin.Views
         }
 
         // ==========================================
-        // 2. 디자이너 연결 이벤트 핸들러
+        // 3. 디자이너 연결 이벤트 핸들러
         // ==========================================
 
         // [신규 메뉴 등록] 버튼 클릭
@@ -132,8 +169,6 @@ namespace SushiKioskAdmin.Views
         {
             string name = txtMenuName.Text.Trim();
             string category = cmbCategory.SelectedItem?.ToString() ?? "";
-
-            // 카테고리 선택 값에서 자동 가격 산정
             int price = GetPriceFromCategory(category);
 
             if (string.IsNullOrEmpty(name))
@@ -142,8 +177,17 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            int newId = menuTable.Rows.Count;
+            // 자동 ID 채번 (가장 큰 ID + 1)
+            int newId = 1;
+            if (menuTable.Rows.Count > 0)
+            {
+                var maxId = menuTable.Compute("MAX(메뉴ID)", "");
+                if (maxId != DBNull.Value) newId = Convert.ToInt32(maxId) + 1;
+            }
+
             menuTable.Rows.Add(newId, name, price, "판매중");
+            SaveAllMenusToCsv(); // CSV 동기화 저장
+
             MessageBox.Show($"[{name}] 메뉴가 추가되었습니다. (가격: {price:N0}원)", "알림");
             ClearInputs();
         }
@@ -165,6 +209,8 @@ namespace SushiKioskAdmin.Views
                 rowView["메뉴명"] = txtMenuName.Text.Trim();
                 rowView["가격"] = price;
 
+                SaveAllMenusToCsv(); // CSV 동기화 저장
+
                 MessageBox.Show($"[{rowView["메뉴명"]}] 정보가 수정되었습니다. (가격: {price:N0}원)", "알림");
             }
         }
@@ -185,14 +231,12 @@ namespace SushiKioskAdmin.Views
                 int price = Convert.ToInt32(rowView["가격"]);
 
                 txtMenuName.Text = menuName;
-
-                // 가격을 기반으로 카테고리 콤보박스 항목 자동 선택
                 cmbCategory.SelectedItem = GetCategoryNameByPrice(price, menuName);
             }
         }
 
         // ==========================================
-        // 3. 내부 헬퍼 메서드
+        // 4. 내부 헬퍼 메서드
         // ==========================================
 
         private void ChangeStatus(string newStatus)
@@ -206,6 +250,8 @@ namespace SushiKioskAdmin.Views
             if (dgvMenuList.CurrentRow.DataBoundItem is DataRowView rowView)
             {
                 rowView["품절여부"] = newStatus;
+                SaveAllMenusToCsv(); // CSV 동기화 저장
+
                 MessageBox.Show($"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
             }
         }
@@ -217,10 +263,22 @@ namespace SushiKioskAdmin.Views
 
         private void UcMenuManagement_Load(object sender, EventArgs e)
         {
-            if (dgvMenuList.Columns.Contains("메뉴ID"))
+            // 반복되던 컬럼 너비 설정을 배열과 반복문으로 깔끔하게 압축
+            var columnWidths = new (string ColumnName, int Width)[]
             {
-                dgvMenuList.Columns["메뉴ID"].Width = 80;
-                dgvMenuList.Columns["메뉴ID"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                ("메뉴ID", 80),
+                ("메뉴명", 150),
+                ("가격", 100),
+                ("품절여부", 90)
+            };
+
+            foreach (var col in columnWidths)
+            {
+                if (dgvMenuList.Columns.Contains(col.ColumnName))
+                {
+                    dgvMenuList.Columns[col.ColumnName].Width = col.Width;
+                    dgvMenuList.Columns[col.ColumnName].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+                }
             }
         }
     }
