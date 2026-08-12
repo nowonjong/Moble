@@ -48,7 +48,7 @@ namespace SushiKioskAdmin.Views
         }
 
         /// <summary>
-        /// CSV 파일 읽어서 메뉴 ID, 초밥명, 가격 정보 로드
+        /// CSV 파일 읽어서 메뉴 ID, 메뉴명, 가격 정보 로드
         /// </summary>
         private void LoadMenuFromCsv()
         {
@@ -156,10 +156,10 @@ namespace SushiKioskAdmin.Views
                 string category = cmbCategory.SelectedItem?.ToString() ?? "";
                 int price = GetPriceFromCategory(category);
 
-                rowView["초밥명"] = txtMenuName.Text.Trim();
+                rowView["메뉴명"] = txtMenuName.Text.Trim();
                 rowView["가격"] = price;
 
-                MessageBox.Show($"[{rowView["초밥명"]}] 정보가 수정되었습니다. (가격: {price:N0}원)", "알림");
+                MessageBox.Show($"[{rowView["메뉴명"]}] 정보가 수정되었습니다. (가격: {price:N0}원)", "알림");
             }
         }
 
@@ -200,7 +200,7 @@ namespace SushiKioskAdmin.Views
             if (dgvMenuList.CurrentRow.DataBoundItem is DataRowView rowView)
             {
                 rowView["품절여부"] = newStatus;
-                MessageBox.Show($"[{rowView["초밥명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
+                MessageBox.Show($"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
             }
         }
 
