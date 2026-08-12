@@ -172,10 +172,14 @@
             // 
             // dgvStockList
             // 
+            dgvStockList.AllowUserToResizeColumns = false;
+            dgvStockList.AllowUserToResizeRows = false;
             dgvStockList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvStockList.Dock = DockStyle.Fill;
             dgvStockList.Location = new Point(280, 40);
             dgvStockList.Name = "dgvStockList";
+            dgvStockList.ReadOnly = true;
+            dgvStockList.RowHeadersVisible = false;
             dgvStockList.RowTemplate.Height = 25;
             dgvStockList.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvStockList.Size = new Size(568, 410);

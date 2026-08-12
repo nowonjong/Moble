@@ -191,10 +191,14 @@
             // 
             // dgvSalesReport
             // 
+            dgvSalesReport.AllowUserToResizeColumns = false;
+            dgvSalesReport.AllowUserToResizeRows = false;
             dgvSalesReport.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvSalesReport.Dock = DockStyle.Fill;
             dgvSalesReport.Location = new Point(0, 265);
             dgvSalesReport.Name = "dgvSalesReport";
+            dgvSalesReport.ReadOnly = true;
+            dgvSalesReport.RowHeadersVisible = false;
             dgvSalesReport.RowTemplate.Height = 25;
             dgvSalesReport.Size = new Size(848, 140);
             dgvSalesReport.TabIndex = 3;

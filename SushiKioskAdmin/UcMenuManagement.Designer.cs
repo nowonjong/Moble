@@ -129,6 +129,8 @@
             // 
             // dgvMenuList
             // 
+            dgvMenuList.AllowUserToResizeColumns = false;
+            dgvMenuList.AllowUserToResizeRows = false;
             dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleLeft;
             dataGridViewCellStyle1.BackColor = SystemColors.Control;
             dataGridViewCellStyle1.Font = new Font("맑은 고딕", 9F, FontStyle.Regular, GraphicsUnit.Point);
@@ -142,6 +144,8 @@
             dgvMenuList.Location = new Point(0, 45);
             dgvMenuList.MultiSelect = false;
             dgvMenuList.Name = "dgvMenuList";
+            dgvMenuList.ReadOnly = true;
+            dgvMenuList.RowHeadersVisible = false;
             dgvMenuList.RowTemplate.Height = 25;
             dgvMenuList.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvMenuList.Size = new Size(568, 405);
@@ -186,6 +190,7 @@
             Controls.Add(pnlLeft);
             Name = "UcMenuManagement";
             Size = new Size(848, 450);
+            Load += UcMenuManagement_Load;
             pnlLeft.ResumeLayout(false);
             pnlLeft.PerformLayout();
             pnlRight.ResumeLayout(false);

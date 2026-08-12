@@ -236,6 +236,8 @@
             // dgvUserList
             // 
             dgvUserList.AllowUserToAddRows = false;
+            dgvUserList.AllowUserToResizeColumns = false;
+            dgvUserList.AllowUserToResizeRows = false;
             dgvUserList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvUserList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvUserList.Dock = DockStyle.Fill;

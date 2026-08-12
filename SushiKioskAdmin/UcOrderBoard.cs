@@ -45,6 +45,12 @@ namespace SushiKioskAdmin.Views
             dgvOrders.EnableHeadersVisualStyles = false;
             dgvOrders.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvOrders.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+
+            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
+            dgvOrders.ColumnHeadersHeight = 30;
+
+            // 높이를 자동으로 늘어나지 않게 고정
+            dgvOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
         // ==========================================
@@ -124,6 +130,41 @@ namespace SushiKioskAdmin.Views
             else if (rdoApp.Checked) dv.RowFilter = "주문출처 = '앱'";
             else if (rdoKiosk.Checked) dv.RowFilter = "주문출처 = '키오스크'";
             else if (rdoWaiting.Checked) dv.RowFilter = "주문출처 = '앱' AND 현재상태 = '접수 대기'";
+        }
+
+        private void UcOrderBoard_Load(object sender, EventArgs e)
+        {
+            // 화면에 완전히 로드된 이후 안전하게 열 너비 설정
+            if (dgvOrders.Columns.Contains("주문번호"))
+            {
+                dgvOrders.Columns["주문번호"].Width = 90;
+                dgvOrders.Columns["주문번호"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
+            if (dgvOrders.Columns.Contains("주문출처"))
+            {
+                dgvOrders.Columns["주문출처"].Width = 90;
+                dgvOrders.Columns["주문출처"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
+            if (dgvOrders.Columns.Contains("수령방식"))
+            {
+                dgvOrders.Columns["수령방식"].Width = 90;
+                dgvOrders.Columns["수령방식"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
+            if (dgvOrders.Columns.Contains("주문시간"))
+            {
+                dgvOrders.Columns["주문시간"].Width = 90;
+                dgvOrders.Columns["주문시간"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
+            if (dgvOrders.Columns.Contains("금액"))
+            {
+                dgvOrders.Columns["금액"].Width = 100;
+                dgvOrders.Columns["금액"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
+            if (dgvOrders.Columns.Contains("현재상태"))
+            {
+                dgvOrders.Columns["현재상태"].Width = 100;
+                dgvOrders.Columns["현재상태"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
         }
     }
 }

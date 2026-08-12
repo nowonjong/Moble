@@ -145,12 +145,15 @@
             // dgvOrders
             // 
             dgvOrders.AllowUserToAddRows = false;
+            dgvOrders.AllowUserToResizeColumns = false;
+            dgvOrders.AllowUserToResizeRows = false;
             dgvOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvOrders.Dock = DockStyle.Fill;
             dgvOrders.Location = new Point(0, 50);
             dgvOrders.MultiSelect = false;
             dgvOrders.Name = "dgvOrders";
             dgvOrders.ReadOnly = true;
+            dgvOrders.RowHeadersVisible = false;
             dgvOrders.RowTemplate.Height = 25;
             dgvOrders.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             dgvOrders.Size = new Size(848, 340);
@@ -165,6 +168,7 @@
             Controls.Add(pnlFilter);
             Name = "UcOrderBoard";
             Size = new Size(848, 450);
+            Load += UcOrderBoard_Load;
             pnlFilter.ResumeLayout(false);
             pnlFilter.PerformLayout();
             pnlControl.ResumeLayout(false);

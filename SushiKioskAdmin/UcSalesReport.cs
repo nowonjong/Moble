@@ -55,6 +55,12 @@ namespace SushiKioskAdmin.Views
 
             dgvSalesReport.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
+            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
+            dgvSalesReport.ColumnHeadersHeight = 30;
+
+            // 높이를 자동으로 늘어나지 않게 고정
+            dgvSalesReport.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
             // ★ 수정 포인트: UpdateReportAndChart()보다 차트를 초기화하는 InitChartStyle()을 반드시 먼저 호출해야 합니다!
             InitChartStyle();
             UpdateReportAndChart();

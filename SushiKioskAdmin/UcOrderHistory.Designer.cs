@@ -104,6 +104,8 @@
             // dgvHistoryList
             // 
             dgvHistoryList.AllowUserToAddRows = false;
+            dgvHistoryList.AllowUserToResizeColumns = false;
+            dgvHistoryList.AllowUserToResizeRows = false;
             dgvHistoryList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvHistoryList.Dock = DockStyle.Left;
             dgvHistoryList.Location = new Point(0, 60);

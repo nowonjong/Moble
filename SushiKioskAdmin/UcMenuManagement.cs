@@ -45,6 +45,12 @@ namespace SushiKioskAdmin.Views
             dgvMenuList.EnableHeadersVisualStyles = false;
             dgvMenuList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvMenuList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+
+            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
+            dgvMenuList.ColumnHeadersHeight = 30;
+
+            // 높이를 자동으로 늘어나지 않게 고정
+            dgvMenuList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
         /// <summary>
@@ -207,6 +213,15 @@ namespace SushiKioskAdmin.Views
         private void ClearInputs()
         {
             txtMenuName.Clear();
+        }
+
+        private void UcMenuManagement_Load(object sender, EventArgs e)
+        {
+            if (dgvMenuList.Columns.Contains("메뉴ID"))
+            {
+                dgvMenuList.Columns["메뉴ID"].Width = 80;
+                dgvMenuList.Columns["메뉴ID"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
+            }
         }
     }
 }

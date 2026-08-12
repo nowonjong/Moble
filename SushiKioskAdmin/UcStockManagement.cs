@@ -44,6 +44,12 @@ namespace SushiKioskAdmin.Views
             dgvStockList.EnableHeadersVisualStyles = false;
             dgvStockList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvStockList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+
+            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
+            dgvStockList.ColumnHeadersHeight = 30;
+
+            // 높이를 자동으로 늘어나지 않게 고정
+            dgvStockList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
         private void LoadStockFromCsv()
         {
@@ -110,10 +116,21 @@ namespace SushiKioskAdmin.Views
                 string itemName = rowView["품목명"].ToString();
                 string unit = rowView["단위"].ToString();
 
+                // 1. 기존 현재재고에 주문 수량 즉시 더하기 (원하시는 경우)
+                int currentStock = Convert.ToInt32(rowView["현재재고"]);
+                rowView["현재재고"] = currentStock + orderQty;
+
+                // 2. 최근 주문 수량 및 상태 업데이트
                 rowView["최근주문수량"] = orderQty;
                 rowView["주문상태"] = "주문완료";
 
-                MessageBox.Show($"[{itemName}] {orderQty:N0}{unit} 주문 요청이 완료되었습니다.", "주문 성공");
+                // 3. 그리드뷰 강제 새로고침 및 하단 라벨 갱신 연동
+                dgvStockList.Refresh();
+
+                // 하단 라벨(lblStock) 즉시 갱신
+                lblStock.Text = $"{Convert.ToInt32(rowView["현재재고"]):N0} {unit}";
+
+                MessageBox.Show($"[{itemName}] {orderQty:N0}{unit} 주문 요청 및 재고가 반영되었습니다.", "주문 성공");
                 numOrderQty.Value = 1;
             }
         }
@@ -135,9 +152,21 @@ namespace SushiKioskAdmin.Views
                     return;
                 }
 
+                // 1. 주문했던 수량만큼 현재 재고에서 다시 차감
+                int cancelQty = Convert.ToInt32(rowView["최근주문수량"]);
+                int currentStock = Convert.ToInt32(rowView["현재재고"]);
+
+                rowView["현재재고"] = currentStock - cancelQty;
+
+                // 2. 주문 정보 초기화
                 rowView["최근주문수량"] = 0;
                 rowView["주문상태"] = "대기중";
-                MessageBox.Show($"[{rowView["품목명"]}] 주문이 취소되었습니다.", "알림");
+
+                // 3. 그리드뷰 및 하단 라벨 즉시 갱신
+                dgvStockList.Refresh();
+                lblStock.Text = $"{Convert.ToInt32(rowView["현재재고"]):N0} {rowView["단위"]}";
+
+                MessageBox.Show($"[{rowView["품목명"]}] 주문이 취소되어 재고가 원복되었습니다.", "알림");
             }
         }
 
