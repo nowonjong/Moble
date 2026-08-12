@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
 
 namespace SushiKioskAdmin.Views
@@ -30,13 +31,8 @@ namespace SushiKioskAdmin.Views
             stockTable.Columns.Add("최근주문수량", typeof(int));
             stockTable.Columns.Add("주문상태", typeof(string));
 
-            // 샘플 더미 데이터 추가
-            stockTable.Rows.Add("STK-001", "생연어 (kg)", 5, "kg", 0, "대기중");
-            stockTable.Rows.Add("STK-002", "광어필렛 (kg)", 3, "kg", 0, "대기중");
-            stockTable.Rows.Add("STK-003", "초밥용 쌀 (kg)", 20, "kg", 0, "대기중");
-            stockTable.Rows.Add("STK-004", "초새우 (팩)", 12, "팩", 10, "주문완료");
-            stockTable.Rows.Add("STK-005", "김가루/구이김 (속)", 8, "속", 0, "대기중");
-            stockTable.Rows.Add("STK-006", "와사비 (kg)", 2, "kg", 5, "주문완료");
+            // CSV 파일에서 데이터 읽기
+            LoadStockFromCsv();
 
             // 그리드뷰 바인딩 및 표시 설정
             dgvStockList.DataSource = stockTable;
@@ -48,6 +44,45 @@ namespace SushiKioskAdmin.Views
             dgvStockList.EnableHeadersVisualStyles = false;
             dgvStockList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvStockList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+        }
+        private void LoadStockFromCsv()
+        {
+            // 프로그램 실행 폴더에서 stock_test.csv 찾기
+            string csvPath = Path.Combine(Application.StartupPath, "stock.csv" );
+
+            // 파일이 없으면 알림
+            if (!File.Exists(csvPath))
+            {
+                MessageBox.Show("stock_test.csv 파일을 찾을 수 없습니다.", "경고");
+                return;
+            }
+
+            // CSV 전체 읽기
+            string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
+            foreach (string line in lines)
+            {
+                // 빈 줄 무시
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                string[] parts = line.Split(',');
+                if (parts.Length >= 3)
+                {
+                    // CSV의 1, 2, 3... 번호를 숫자로 변환
+                    if (int.TryParse(parts[0].Trim(), out int stockIndex))
+                    {
+                        string stockName = parts[1].Trim();
+                        string unit = parts[2].Trim();
+                        string stockCode = "STK-" + stockIndex.ToString("D3");
+
+                        // CSV에 없는 값들은 초기값 설정
+                        int currentStock = 0;
+                        int lastOrderQty = 0;
+                        string orderStatus = "대기중";
+                        stockTable.Rows.Add(stockCode, stockName, currentStock, unit, lastOrderQty,  orderStatus
+                        );
+                    }
+                }
+            }
         }
 
         // ==========================================

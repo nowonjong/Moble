@@ -191,25 +191,16 @@ namespace SushiKioskAdmin.Views
 
         private void ChangeStatus(string newStatus)
         {
-            if (dgvMenuList.SelectedRows.Count == 0)
+            if (dgvMenuList.CurrentRow == null || dgvMenuList.CurrentRow.Index < 0)
             {
-                MessageBox.Show(
-                    "상태를 변경할 메뉴를 목록에서 먼저 선택해 주세요.",
-                    "안내"
-                );
+                MessageBox.Show("상태를 변경할 메뉴를 목록에서 먼저 선택해 주세요.", "안내");
                 return;
             }
 
-            if (dgvMenuList.SelectedRows[0].DataBoundItem is DataRowView rowView)
+            if (dgvMenuList.CurrentRow.DataBoundItem is DataRowView rowView)
             {
                 rowView["품절여부"] = newStatus;
-
-                dgvMenuList.Refresh();
-
-                MessageBox.Show(
-                    $"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.",
-                    "알림"
-                );
+                MessageBox.Show($"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
             }
         }
 

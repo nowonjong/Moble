@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Data;
 using System.Drawing;
+using System.Text;
 using System.Windows.Forms;
 
 namespace SushiKioskAdmin.Views
@@ -33,10 +34,8 @@ namespace SushiKioskAdmin.Views
             userTable.Columns.Add("주소", typeof(string));
             userTable.Columns.Add("가입일자", typeof(string));
 
-            userTable.Rows.Add(1001, "김철수", "010-1234-5678", 2500, "서울시 강남구", "2026-01-15");
-            userTable.Rows.Add(1002, "이영희", "010-9876-5432", 800, "부산시 해운대구", "2026-03-20");
-            userTable.Rows.Add(1003, "박민수", "010-5555-4444", 5100, "대구시 수성구", "2025-11-02");
-            userTable.Rows.Add(1004, "정수진", "010-3333-2222", 1200, "인천시 남동구", "2026-06-10");
+            // CSV 파일 읽어서 데이터 로드
+            LoadUserFromCsv();
 
             // 컬럼 자동 생성 활성화 (디자이너와 충돌 방지)
             dgvUserList.AutoGenerateColumns = true;
@@ -57,6 +56,44 @@ namespace SushiKioskAdmin.Views
             dgvUserList.EnableHeadersVisualStyles = false;
             dgvUserList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvUserList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+        }
+        private void LoadUserFromCsv()
+        {
+            // 실행 파일이 있는 폴더에서 member_test.csv 찾기
+            string csvPath = Path.Combine(Application.StartupPath,"member.csv");
+
+            // 파일이 없으면 경고
+            if (!File.Exists(csvPath))
+            {
+                MessageBox.Show("member_test.csv 파일을 찾을 수 없습니다.", "경고" );
+                return;
+            }
+
+            // CSV 파일 전체 읽기
+            string[] lines = File.ReadAllLines( csvPath, Encoding.UTF8);
+            foreach (string line in lines)
+            {
+                // 빈 줄은 무시
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                string[] parts = line.Split(',');
+
+                if (parts.Length >= 7)
+                {
+                    // 회원번호와 포인트 숫자 변환
+                    if (int.TryParse(parts[0].Trim(), out int memberIndex) && int.TryParse(parts[4].Trim(), out int point))
+                    {
+                        string memberName = parts[1].Trim();
+                        string phone = parts[2].Trim();
+                        // parts[3]은 비밀번호
+                        // 관리자 화면에는 표시하지 않기 때문에 사용하지 않음
+                        string address = parts[5].Trim();
+                        string joinDate = parts[6].Trim();
+                        // DataTable에 추가
+                        userTable.Rows.Add(memberIndex, memberName, phone, point, address, joinDate
+                        );
+                    }
+                }
+            }
         }
 
         // ==========================================
