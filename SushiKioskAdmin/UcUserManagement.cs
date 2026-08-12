@@ -45,7 +45,7 @@ namespace SushiKioskAdmin.Views
             dgvUserList.DataSource = userTable;
             dgvUserList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
-            // ★ 포인트 열 너비를 코드로 강제 조절하는 구문은 에러를 유발하므로 제거하고, 
+            // 포인트 열 너비를 코드로 강제 조절하는 구문은 에러를 유발하므로 제거하고, 
             // 천단위 콤마 서식(Format)만 안전하게 지정합니다.
             if (dgvUserList.Columns.Contains("포인트"))
             {
@@ -57,15 +57,20 @@ namespace SushiKioskAdmin.Views
             dgvUserList.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvUserList.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
         }
+
+        // ==========================================
+        // 2. CSV 회원정보 읽기
+        // ==========================================
+
         private void LoadUserFromCsv()
         {
-            // 실행 파일이 있는 폴더에서 member_test.csv 찾기
+            // 실행 파일이 있는 폴더에서 member.csv 찾기
             string csvPath = Path.Combine(Application.StartupPath,"member.csv");
 
             // 파일이 없으면 경고
             if (!File.Exists(csvPath))
             {
-                MessageBox.Show("member_test.csv 파일을 찾을 수 없습니다.", "경고" );
+                MessageBox.Show("member.csv 파일을 찾을 수 없습니다.", "경고" );
                 return;
             }
 
@@ -89,15 +94,101 @@ namespace SushiKioskAdmin.Views
                         string address = parts[5].Trim();
                         string joinDate = parts[6].Trim();
                         // DataTable에 추가
-                        userTable.Rows.Add(memberIndex, memberName, phone, point, address, joinDate
-                        );
+                        userTable.Rows.Add(memberIndex, memberName, phone, point, address, joinDate);
                     }
                 }
             }
         }
 
         // ==========================================
-        // 2. 조회 및 검색 기능
+        // 3. 신규 회원 CSV 저장
+        // ==========================================
+
+        private void SaveNewUserToCsv(string name, string phone, string address)
+        {
+            try
+            {
+                // 회원번호 자동 생성
+                int newId = 1001;
+
+                if (userTable.Rows.Count > 0)
+                {
+                    int maxId = 1000;
+                    foreach (DataRow row in userTable.Rows)
+                    {
+                        // 삭제된 데이터는 제외
+                        if (row.RowState == DataRowState.Deleted)
+                            continue;
+                        int id = Convert.ToInt32(row["회원번호"]);
+                        if (id > maxId)
+                        {
+                            maxId = id;
+                        }
+                    }
+                    // 가장 큰 회원번호 + 1
+                    newId = maxId + 1;
+                }
+                // 가입일자 자동 생성
+                string regDate = DateTime.Now.ToString("yyyy-MM-dd");
+
+                // 포인트 자동 0
+                int point = 0;
+
+                // 현재 관리자 등록화면에는
+                // 비밀번호 입력란이 없으므로 빈 값
+                string password = "";
+
+                // 화면 DataTable에도 추가
+                userTable.Rows.Add(newId, name, phone, point, address, regDate);
+
+                // CSV에도 저장
+                string csvPath = Path.Combine(Application.StartupPath, "member.csv");
+                string csvLine = newId + "," + name + "," + phone + "," + password + "," + point + "," + address + "," + regDate;
+                File.AppendAllText(csvPath, csvLine + Environment.NewLine, new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("회원 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void SaveAllUsersToCsv()
+        {
+            try
+            {
+                string csvPath = Path.Combine(Application.StartupPath, "member.csv");
+
+                StringBuilder sb = new StringBuilder();
+
+                foreach (DataRow row in userTable.Rows)
+                {
+                    // 삭제된 행은 CSV에 저장하지 않음
+                    if (row.RowState == DataRowState.Deleted)
+                        continue;
+
+                    int memberIndex = Convert.ToInt32(row["회원번호"]);
+                    string name = row["회원명"].ToString();
+                    string phone = row["연락처"].ToString();
+                    int point = Convert.ToInt32(row["포인트"]);
+                    string address = row["주소"].ToString();
+                    string joinDate = row["가입일자"].ToString();
+
+                    // 현재 화면에서는 비밀번호를 보관하지 않으므로 빈 값
+                    string password = "";
+                    sb.AppendLine(memberIndex + "," + name + "," + phone + "," + password + "," + point + "," + address + "," + joinDate );
+                }
+
+                // 기존 CSV 파일 전체 덮어쓰기
+                File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("CSV 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ==========================================
+        // 4. 조회 및 검색 기능
         // ==========================================
 
         /// <summary>
@@ -129,7 +220,7 @@ namespace SushiKioskAdmin.Views
         }
 
         // ==========================================
-        // 3. 회원 등록 / 수정 / 삭제 기능
+        // 5. 회원 등록 / 수정 / 삭제 기능
         // ==========================================
 
         /// <summary>
@@ -142,23 +233,7 @@ namespace SushiKioskAdmin.Views
             string address = txtInputAddress.Text.Trim();
 
             // 유효성 검사
-            if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(phone))
-            {
-                MessageBox.Show("회원명과 연락처는 필수 입력 항목입니다.", "안내", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            // 채번 (마지막 회원번호 + 1, 목록이 비어있으면 1001부터 시작)
-            int newId = 1001;
-            if (userTable.Rows.Count > 0)
-            {
-                newId = Convert.ToInt32(userTable.Rows[userTable.Rows.Count - 1]["회원번호"]) + 1;
-            }
-
-            string regDate = DateTime.Now.ToString("yyyy-MM-dd");
-
-            // 신규 회원은 포인트 0으로 자동 저장 (포인트는 수정/입력 불가)
-            userTable.Rows.Add(newId, name, phone, 0, address, regDate);
+            SaveNewUserToCsv(name, phone, address);
 
             MessageBox.Show($"[{name}] 회원이 성공적으로 등록되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
             ClearInputs();
@@ -192,6 +267,9 @@ namespace SushiKioskAdmin.Views
                 rowView["연락처"] = phone;
                 rowView["주소"] = address;
 
+                // 수정 내용을 CSV에도 저장
+                SaveAllUsersToCsv();
+
                 MessageBox.Show($"[{name}] 회원의 정보가 수정되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 ClearInputs();
             }
@@ -222,6 +300,8 @@ namespace SushiKioskAdmin.Views
                 if (result == DialogResult.Yes)
                 {
                     rowView.Row.Delete();
+                    // CSV에서도 삭제
+                    SaveAllUsersToCsv();
                     MessageBox.Show("회원 정보가 삭제되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     ClearInputs();
                 }
@@ -229,7 +309,7 @@ namespace SushiKioskAdmin.Views
         }
 
         // ==========================================
-        // 4. 데이터 그리드 선택 연동 및 입력폼 관리
+        // 6. 데이터 그리드 선택 연동 및 입력폼 관리
         // ==========================================
 
         /// <summary>
@@ -301,7 +381,6 @@ namespace SushiKioskAdmin.Views
                 dgvUserList.Columns["가입일자"].Width = 80;
                 dgvUserList.Columns["가입일자"].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
             }
-
         }
     }
 }
