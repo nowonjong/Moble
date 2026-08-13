@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Data;
 using System.Drawing;
+using System.IO;
+using System.Text;
 using System.Windows.Forms;
+using System.Collections.Generic;
 
 namespace SushiKioskAdmin.Views
 {
@@ -15,71 +18,201 @@ namespace SushiKioskAdmin.Views
             InitOrderData();
         }
 
-        // ==========================================
-        // 1. 초기화 메서드
-        // ==========================================
-
         private void InitOrderData()
         {
-            // 주문 데이터테이블 컬럼 구조 생성
             orderTable = new DataTable();
-            orderTable.Columns.Add("주문번호");
-            orderTable.Columns.Add("주문출처"); // [앱] 또는 [키오스크]
-            orderTable.Columns.Add("수령방식"); // [배달], [포장], [매장]
-            orderTable.Columns.Add("주문시간");
-            orderTable.Columns.Add("주문내역");
-            orderTable.Columns.Add("금액");
-            orderTable.Columns.Add("현재상태");
+            orderTable.Columns.Add("주문번호"); // Identifier (T02-01 또는 앱 영수증번호)
+            orderTable.Columns.Add("주문출처"); // Source (키오스크, 앱)
+            orderTable.Columns.Add("수령방식"); // OrderType (매장, 포장, 배달)
+            orderTable.Columns.Add("주문시간"); // OrderTime
+            orderTable.Columns.Add("주문내역"); // items.csv에서 조합
+            orderTable.Columns.Add("금액", typeof(int)); // TotalAmount
+            orderTable.Columns.Add("현재상태"); // Status
 
-            // 샘플 더미 데이터 생성
-            orderTable.Rows.Add("101", "앱", "배달", "12:05", "연어초밥 10개 ", "15,000원", "접수 대기");
-            orderTable.Rows.Add("102", "키오스크", "매장", "12:08", "Table 03 - 모듬초밥 2개", "32,000원", "조리 중");
-            orderTable.Rows.Add("103", "앱", "포장", "12:10", "광어초밥 10개", "16,000원", "접수 대기");
-            orderTable.Rows.Add("104", "키오스크", "포장", "12:12", "참치초밥 10개", "20,000원", "조리 중");
+            LoadOrdersFromCsv();
 
-            // 그리드뷰 데이터 바인딩 및 기본 옵션 설정
             dgvOrders.DataSource = orderTable;
             dgvOrders.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvOrders.Columns["금액"].DefaultCellStyle.Format = "N0";
 
-            // 그리드뷰 헤더 회색 고정 (연파란색 스타일 제거)
             dgvOrders.EnableHeadersVisualStyles = false;
             dgvOrders.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvOrders.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
-
-            // 열 헤더 높이 및 고정 설정
             dgvOrders.ColumnHeadersHeight = 30;
             dgvOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
-        // ==========================================
-        // 2. 디자이너 연결 이벤트 핸들러 (버튼 및 라디오)
-        // ==========================================
+        /// <summary>
+        /// susi_orders_realtime.csv를 읽어와서 실시간 탭에 표시 (완료된 주문은 제외)
+        /// CSV 구조: Identifier, Source, OrderType, OrderTime, TotalAmount, Status
+        /// </summary>
+        private void LoadOrdersFromCsv()
+        {
+            orderTable.Clear();
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            if (!File.Exists(ordersPath)) return;
 
-        // [상단 필터] 라디오 버튼 상태 변경 이벤트 (중복 제거 완료)
+            string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                string[] parts = line.Split(',');
+                if (parts.Length >= 6)
+                {
+                    string identifier = parts[0].Trim();
+                    string source = parts[1].Trim();
+                    string orderType = parts[2].Trim();
+                    string orderTimeStr = parts[3].Trim();
+
+                    if (!int.TryParse(parts[4].Trim(), out int totalAmount)) totalAmount = 0;
+                    string orderStatus = parts[5].Trim();
+
+                    // 완료된 주문은 실시간 탭에서 제외
+                    if (orderStatus == "결제완료" || orderStatus == "픽업완료" || orderStatus == "주문거절")
+                    {
+                        continue;
+                    }
+
+                    string orderTime = orderTimeStr;
+                    if (DateTime.TryParse(orderTimeStr, out DateTime dt))
+                    {
+                        orderTime = dt.ToString("HH:mm");
+                    }
+
+                    string summaryText = GetOrderItemsSummary(identifier);
+
+                    orderTable.Rows.Add(identifier, source, orderType, orderTime, summaryText, totalAmount, orderStatus);
+                }
+            }
+            ApplyCurrentFilter();
+        }
+
+        private string GetOrderItemsSummary(string identifier)
+        {
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+            if (!File.Exists(itemsPath)) return "주문 내역 없음";
+
+            string[] lines = File.ReadAllLines(itemsPath, Encoding.UTF8);
+            var itemList = new List<string>();
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                string[] parts = line.Split(',');
+                if (parts.Length >= 6)
+                {
+                    string keyId = parts[0].Trim();
+                    if (keyId.Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string menuName = parts[1].Trim();
+                        int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
+                        int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
+
+                        if (discountQty > 0)
+                        {
+                            itemList.Add($"{menuName} {qty}개 (할인 {discountQty}개)");
+                        }
+                        else
+                        {
+                            itemList.Add($"{menuName} {qty}개");
+                        }
+                    }
+                }
+            }
+
+            return itemList.Count > 0 ? string.Join(", ", itemList) : "일반 주문";
+        }
+
+        private void SaveOrdersToCsv()
+        {
+            try
+            {
+                string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+                var allLines = File.Exists(ordersPath) ? new List<string>(File.ReadAllLines(ordersPath, Encoding.UTF8)) : new List<string>();
+                var currentDict = new Dictionary<string, string>();
+
+                foreach (var l in allLines)
+                {
+                    if (string.IsNullOrWhiteSpace(l)) continue;
+                    var p = l.Split(',');
+                    if (p.Length > 0) currentDict[p[0].Trim()] = l;
+                }
+
+                StringBuilder sb = new StringBuilder();
+
+                foreach (var kvp in currentDict)
+                {
+                    string id = kvp.Key;
+                    string originalLine = kvp.Value;
+
+                    DataRow foundRow = null;
+                    foreach (DataRow r in orderTable.Rows)
+                    {
+                        if (r["주문번호"].ToString() == id)
+                        {
+                            foundRow = r;
+                            break;
+                        }
+                    }
+
+                    if (foundRow != null)
+                    {
+                        var p = originalLine.Split(',');
+                        string identifier = p.Length > 0 ? p[0] : id;
+                        string source = p.Length > 1 ? p[1] : foundRow["주문출처"].ToString();
+                        string orderType = p.Length > 2 ? p[2] : foundRow["수령방식"].ToString();
+                        string orderTime = p.Length > 3 ? p[3] : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                        string totalAmount = p.Length > 4 ? p[4] : foundRow["금액"].ToString();
+                        string orderStatus = foundRow["현재상태"].ToString();
+
+                        sb.AppendLine($"{identifier},{source},{orderType},{orderTime},{totalAmount},{orderStatus}");
+                    }
+                    else
+                    {
+                        var p = originalLine.Split(',');
+                        if (p.Length >= 6)
+                        {
+                            p[5] = "픽업완료";
+                            sb.AppendLine(string.Join(",", p));
+                        }
+                        else
+                        {
+                            sb.AppendLine(originalLine);
+                        }
+                    }
+                }
+
+                File.WriteAllText(ordersPath, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("주문 저장 오류: " + ex.Message);
+            }
+        }
+
         private void FilterOrders_CheckedChanged(object sender, EventArgs e)
         {
             if (sender is RadioButton rdo && rdo.Checked)
             {
                 ApplyCurrentFilter();
+
+                bool isAppOrderFilter = rdoApp.Checked || rdoWaiting.Checked;
+
+                btnAccept.Visible = isAppOrderFilter;
+                btnReject.Visible = isAppOrderFilter;
+                btnCookDone.Visible = isAppOrderFilter;
+                btnPickUpDone.Visible = isAppOrderFilter;
             }
         }
 
-        // [하단 버튼] 앱 주문 수락 (조리 중)
         private void btnAccept_Click(object sender, EventArgs e) => ProcessAppOrder("조리 중");
-
-        // [하단 버튼] 앱 주문 거절
         private void btnReject_Click(object sender, EventArgs e) => ProcessAppOrder("주문 거절");
-
-        // [하단 버튼] 조리 완료
         private void btnCookDone_Click(object sender, EventArgs e) => ProcessAppOrder("조리 완료");
+        private void btnPickUpDone_Click(object sender, EventArgs e) => ProcessAppOrder("픽업완료");
 
-        // ==========================================
-        // 3. 비즈니스 로직 및 헬퍼 메서드
-        // ==========================================
-
-        /// <summary>
-        /// 앱 주문에 한해서 상태(조리 중, 주문 거절, 조리 완료) 변경 처리
-        /// </summary>
         private void ProcessAppOrder(string newStatus)
         {
             if (dgvOrders.SelectedRows.Count == 0)
@@ -94,20 +227,24 @@ namespace SushiKioskAdmin.Views
 
                 if (source == "키오스크")
                 {
-                    MessageBox.Show("키오스크 주문은 자동 처리됩니다.\n수락/거절/조리완료 처리는 [앱 주문]만 가능합니다.", "안내");
+                    MessageBox.Show("키오스크 주문은 테이블 결제를 통해 처리됩니다.", "안내");
                     return;
                 }
 
                 rowView["현재상태"] = newStatus;
-                ApplyCurrentFilter();
 
-                MessageBox.Show($"앱 주문 [{rowView["주문번호"]}]번의 상태가 [{newStatus}](으)로 변경되었습니다.", "알림");
+                if (newStatus == "픽업완료" || newStatus == "주문 거절")
+                {
+                    rowView.Row.Delete();
+                }
+
+                SaveOrdersToCsv();
+                LoadOrdersFromCsv();
+
+                MessageBox.Show($"앱 주문 처리 완료: [{newStatus}]", "알림");
             }
         }
 
-        /// <summary>
-        /// 현재 체크되어 있는 라디오 버튼의 상태를 기준으로 그리드 필터를 재적용하는 헬퍼 메서드
-        /// </summary>
         private void ApplyCurrentFilter()
         {
             DataView dv = orderTable.DefaultView;
@@ -120,15 +257,15 @@ namespace SushiKioskAdmin.Views
 
         private void UcOrderBoard_Load(object sender, EventArgs e)
         {
-            // 반복되던 컬럼 너비 설정을 배열과 반복문으로 깔끔하게 압축
             var columnWidths = new (string ColumnName, int Width)[]
             {
-                ("주문번호", 90),
-                ("주문출처", 90),
+                ("주문번호", 120),
+                ("주문출처", 80),
                 ("수령방식", 90),
-                ("주문시간", 90),
-                ("금액", 100),
-                ("현재상태", 100)
+                ("주문시간", 80),
+                ("주문내역", 180),
+                ("금액", 90),
+                ("현재상태", 90)
             };
 
             foreach (var col in columnWidths)
@@ -139,6 +276,12 @@ namespace SushiKioskAdmin.Views
                     dgvOrders.Columns[col.ColumnName].AutoSizeMode = DataGridViewAutoSizeColumnMode.None;
                 }
             }
+
+            bool isAppOrderFilter = rdoApp.Checked || rdoWaiting.Checked;
+            btnAccept.Visible = isAppOrderFilter;
+            btnReject.Visible = isAppOrderFilter;
+            btnCookDone.Visible = isAppOrderFilter;
+            btnPickUpDone.Visible = isAppOrderFilter;
         }
     }
 }

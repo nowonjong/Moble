@@ -34,6 +34,7 @@
             rdoApp = new RadioButton();
             rdoAll = new RadioButton();
             pnlControl = new Panel();
+            btnPickUpDone = new Button();
             btnCookDone = new Button();
             btnReject = new Button();
             btnAccept = new Button();
@@ -58,7 +59,7 @@
             // rdoWaiting
             // 
             rdoWaiting.AutoSize = true;
-            rdoWaiting.Location = new Point(425, 16);
+            rdoWaiting.Location = new Point(424, 16);
             rdoWaiting.Name = "rdoWaiting";
             rdoWaiting.Size = new Size(77, 19);
             rdoWaiting.TabIndex = 0;
@@ -69,7 +70,7 @@
             // rdoKiosk
             // 
             rdoKiosk.AutoSize = true;
-            rdoKiosk.Location = new Point(298, 16);
+            rdoKiosk.Location = new Point(166, 16);
             rdoKiosk.Name = "rdoKiosk";
             rdoKiosk.Size = new Size(85, 19);
             rdoKiosk.TabIndex = 0;
@@ -80,7 +81,7 @@
             // rdoApp
             // 
             rdoApp.AutoSize = true;
-            rdoApp.Location = new Point(174, 16);
+            rdoApp.Location = new Point(299, 16);
             rdoApp.Name = "rdoApp";
             rdoApp.Size = new Size(77, 19);
             rdoApp.TabIndex = 0;
@@ -103,6 +104,7 @@
             // 
             // pnlControl
             // 
+            pnlControl.Controls.Add(btnPickUpDone);
             pnlControl.Controls.Add(btnCookDone);
             pnlControl.Controls.Add(btnReject);
             pnlControl.Controls.Add(btnAccept);
@@ -112,9 +114,19 @@
             pnlControl.Size = new Size(848, 60);
             pnlControl.TabIndex = 2;
             // 
+            // btnPickUpDone
+            // 
+            btnPickUpDone.Location = new Point(747, 11);
+            btnPickUpDone.Name = "btnPickUpDone";
+            btnPickUpDone.Size = new Size(91, 38);
+            btnPickUpDone.TabIndex = 3;
+            btnPickUpDone.Text = "픽업 완료";
+            btnPickUpDone.UseVisualStyleBackColor = true;
+            btnPickUpDone.Click += btnCookDone_Click;
+            // 
             // btnCookDone
             // 
-            btnCookDone.Location = new Point(731, 11);
+            btnCookDone.Location = new Point(643, 11);
             btnCookDone.Name = "btnCookDone";
             btnCookDone.Size = new Size(91, 38);
             btnCookDone.TabIndex = 3;
@@ -124,7 +136,7 @@
             // 
             // btnReject
             // 
-            btnReject.Location = new Point(628, 11);
+            btnReject.Location = new Point(539, 11);
             btnReject.Name = "btnReject";
             btnReject.Size = new Size(91, 38);
             btnReject.TabIndex = 3;
@@ -134,7 +146,7 @@
             // 
             // btnAccept
             // 
-            btnAccept.Location = new Point(525, 11);
+            btnAccept.Location = new Point(435, 11);
             btnAccept.Name = "btnAccept";
             btnAccept.Size = new Size(91, 38);
             btnAccept.TabIndex = 3;
@@ -188,5 +200,6 @@
         private Button btnReject;
         private Button btnAccept;
         private DataGridView dgvOrders;
+        private Button btnPickUpDone;
     }
 }

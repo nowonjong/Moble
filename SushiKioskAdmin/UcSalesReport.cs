@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.IO;
@@ -7,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
+using System.Collections.Generic;
 using iTextSharp.text;
 using iTextSharp.text.pdf;
 
@@ -43,25 +43,23 @@ namespace SushiKioskAdmin.Views
             cmbPeriodUnit.Items.AddRange(new string[] { "요일별 (월~일)", "주차별 (1~5주)", "월별 (1~12월)" });
             cmbPeriodUnit.SelectedIndex = 0;
 
-            // 테이블 구조 생성
+            // salesTable 구조 생성 (결제일시, 영수증번호, 메뉴명, 수량, 단가, 할인수량, 결제금액)
             salesTable = new DataTable();
             salesTable.Columns.Add("결제일시", typeof(DateTime));
+            salesTable.Columns.Add("영수증번호", typeof(string));
             salesTable.Columns.Add("메뉴명", typeof(string));
             salesTable.Columns.Add("수량", typeof(int));
-            salesTable.Columns.Add("결제금액", typeof(int));
+            salesTable.Columns.Add("단가", typeof(int));
+            salesTable.Columns.Add("할인수량", typeof(int));
+            salesTable.Columns.Add("결제금액", typeof(int)); // SubTotal (실제 결제액)
 
-            // susi_menu.csv 데이터를 기반으로 매출 데이터 생성
-            GenerateDummyDataFromCsv();
+            // 실제 CSV 파일에서 매출 데이터 로드
+            LoadSalesDataFromCsv();
 
             dgvSalesReport.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
-
-            // 열 헤더 높이를 원하는 크기(예: 40픽셀)로 지정
             dgvSalesReport.ColumnHeadersHeight = 30;
-
-            // 높이를 자동으로 늘어나지 않게 고정
             dgvSalesReport.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
 
-            // ★ 수정 포인트: UpdateReportAndChart()보다 차트를 초기화하는 InitChartStyle()을 반드시 먼저 호출해야 합니다!
             InitChartStyle();
             UpdateReportAndChart();
         }
@@ -92,7 +90,7 @@ namespace SushiKioskAdmin.Views
         }
 
         // ==========================================
-        // 2. 폼 이벤트 handler (디자이너 연결용)
+        // 2. 폼 이벤트 handler
         // ==========================================
 
         private void btnSearch_Click(object sender, EventArgs e) => UpdateReportAndChart();
@@ -109,7 +107,6 @@ namespace SushiKioskAdmin.Views
 
         private void UpdateReportAndChart()
         {
-            // ★ 안전한 Series 이름 검사 방식 (FindByName 사용)
             if (chartSales == null || chartSales.Series == null || chartSales.Series.FindByName("매출액") == null)
             {
                 return;
@@ -124,14 +121,17 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
+            // 최신 데이터 반영을 위해 매번 조회 시 파일 다시 로드
+            LoadSalesDataFromCsv();
+
             // 1. 날짜 범위 데이터 필터링
             DataRow[] filteredRows = salesTable.Select($"결제일시 >= '{start}' AND 결제일시 <= '{end}'");
 
-            // 2. 메뉴명 기준 그룹화 테이블 생성 (결제일시 제거, 총 수량 및 총 결제금액 집계)
+            // 2. 메뉴명 기준 그룹화 테이블 생성 (할인 없는 순수 정가 기준 금액 집계 포함)
             DataTable summaryTable = new DataTable();
             summaryTable.Columns.Add("메뉴명", typeof(string));
-            summaryTable.Columns.Add("수량", typeof(int));
-            summaryTable.Columns.Add("결제금액", typeof(int));
+            summaryTable.Columns.Add("총판매수량", typeof(int));
+            summaryTable.Columns.Add("총결제금액(정가기준)", typeof(int));
 
             if (filteredRows.Length > 0)
             {
@@ -141,24 +141,25 @@ namespace SushiKioskAdmin.Views
                     {
                         MenuName = g.Key,
                         TotalQty = g.Sum(r => Convert.ToInt32(r["수량"])),
-                        TotalPrice = g.Sum(r => Convert.ToInt32(r["결제금액"]))
+                        // 할인 없는 순수 정가 기준 금액: (수량 * 단가)의 합계
+                        TotalOriginalPrice = g.Sum(r => Convert.ToInt32(r["수량"]) * Convert.ToInt32(r["단가"]))
                     });
 
                 foreach (var item in groupedData)
                 {
-                    summaryTable.Rows.Add(item.MenuName, item.TotalQty, item.TotalPrice);
+                    summaryTable.Rows.Add(item.MenuName, item.TotalQty, item.TotalOriginalPrice);
                 }
 
                 dgvSalesReport.DataSource = summaryTable;
-                dgvSalesReport.Columns["수량"].DefaultCellStyle.Format = "N0";
-                dgvSalesReport.Columns["결제금액"].DefaultCellStyle.Format = "N0";
+                dgvSalesReport.Columns["총판매수량"].DefaultCellStyle.Format = "N0";
+                dgvSalesReport.Columns["총결제금액(정가기준)"].DefaultCellStyle.Format = "N0";
             }
             else
             {
                 dgvSalesReport.DataSource = null;
             }
 
-            // 3. 차트 데이터 집계 및 생성
+            // 3. 차트 데이터 집계 및 생성 (실제 결제 금액 기준)
             chartSales.Series["매출액"].Points.Clear();
             int unitType = cmbPeriodUnit.SelectedIndex;
 
@@ -201,10 +202,18 @@ namespace SushiKioskAdmin.Views
                 }
             }
 
-            // 4. 하단 요약 문구 업데이트
-            int totalSum = filteredRows.Sum(r => Convert.ToInt32(r["결제금액"]));
-            lblTotalSales.Text = $"{totalSum:N0} 원";
-            lblTotalOrders.Text = $"{filteredRows.Length:N0} 건";
+            // 4. 하단 요약 지표 업데이트 (총 매출액, 총 건수, 할인된 금액)
+            int totalSales = filteredRows.Sum(r => Convert.ToInt32(r["결제금액"]));
+
+            // 총 할인 금액 계산: (할인수량 * 단가)의 합계
+            int totalDiscount = filteredRows.Sum(r => Convert.ToInt32(r["할인수량"]) * Convert.ToInt32(r["단가"]));
+
+            // 고유 영수증 건수 계산
+            int totalOrders = filteredRows.Select(r => r["영수증번호"].ToString()).Distinct().Count();
+
+            lblTotalSales.Text = $"{totalSales:N0} 원";
+            lblTotalOrders.Text = $"{totalOrders:N0} 건";
+            lblTotalDiscount.Text = $"{totalDiscount:N0} 원";
         }
 
         private void AddChartPoint(int xPos, int yValue, string labelName)
@@ -214,54 +223,54 @@ namespace SushiKioskAdmin.Views
         }
 
         // ==========================================
-        // 4. CSV 연동 및 데이터 생성 로직 (수정된 부분)
+        // 4. 실제 CSV 파일 연동 로직
         // ==========================================
 
-        private void GenerateDummyDataFromCsv()
+        private void LoadSalesDataFromCsv()
         {
-            // 메뉴 정보를 저장할 리스트 (메뉴명, 가격)
-            List<(string MenuName, int Price)> menuList = new List<(string, int)>();
+            salesTable.Clear();
 
-            string csvPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
+            string historyPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
 
-            // CSV 파일이 존재하면 읽어오기
-            if (File.Exists(csvPath))
+            if (!File.Exists(historyPath) || !File.Exists(itemsPath)) return;
+
+            // 1. sales_history에서 영수증별 결제일시 맵 생성
+            var historyDict = new Dictionary<string, DateTime>();
+            foreach (string line in File.ReadAllLines(historyPath, Encoding.UTF8))
             {
-                string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
-                foreach (string line in lines)
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                string[] parts = line.Split(',');
+                if (parts.Length >= 2)
                 {
-                    if (string.IsNullOrWhiteSpace(line)) continue;
-
-                    // CSV 컬럼: 0:ID, 1:한글메뉴명, 2:일어, 3:영어, 4:가격
-                    string[] parts = line.Split(',');
-                    if (parts.Length >= 5)
+                    string receiptNo = parts[0].Trim();
+                    if (DateTime.TryParse(parts[1].Trim(), out DateTime payDate))
                     {
-                        string menuName = parts[1].Trim();
-                        if (int.TryParse(parts[4].Trim(), out int price))
-                        {
-                            menuList.Add((menuName, price));
-                        }
+                        historyDict[receiptNo] = payDate;
                     }
                 }
             }
 
-            // CSV를 읽지 못했거나 비어있을 경우 예비용 기본 메뉴 설정
-            if (menuList.Count == 0)
+            // 2. order_items에서 해당 영수증들의 상세 품목 결합
+            foreach (string line in File.ReadAllLines(itemsPath, Encoding.UTF8))
             {
-                menuList.Add(("광어초밥", 3000));
-                menuList.Add(("초새우초밥", 1500));
-                menuList.Add(("유부초밥", 1000));
-            }
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                string[] parts = line.Split(',');
+                if (parts.Length >= 6)
+                {
+                    string receiptNo = parts[0].Trim();
+                    if (historyDict.ContainsKey(receiptNo))
+                    {
+                        DateTime payDate = historyDict[receiptNo];
+                        string menuName = parts[1].Trim();
+                        int price = int.TryParse(parts[2].Trim(), out int p) ? p : 0;
+                        int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
+                        int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
+                        int subTotal = int.TryParse(parts[5].Trim(), out int st) ? st : 0;
 
-            // 읽어온 메뉴들로 300개의 샘플 매출 데이터 파싱
-            Random rand = new Random();
-            for (int i = 0; i < 300; i++)
-            {
-                var selectedMenu = menuList[rand.Next(menuList.Count)];
-                int qty = rand.Next(1, 4); // 수량 1~3개
-                DateTime randDate = DateTime.Now.AddDays(-rand.Next(0, 60)).AddHours(-rand.Next(0, 12));
-
-                salesTable.Rows.Add(randDate, selectedMenu.MenuName, qty, selectedMenu.Price * qty);
+                        salesTable.Rows.Add(payDate, receiptNo, menuName, qty, price, discountQty, subTotal);
+                    }
+                }
             }
         }
 
@@ -327,7 +336,7 @@ namespace SushiKioskAdmin.Views
                         iTextSharp.text.Font cellFont = new iTextSharp.text.Font(bf, 10, iTextSharp.text.Font.NORMAL);
 
                         pdfDoc.Add(new Paragraph($"매출 리포트 ({dtpStartDate.Value:yyyy-MM-dd} ~ {dtpEndDate.Value:yyyy-MM-dd})", titleFont));
-                        pdfDoc.Add(new Paragraph($"총 매출액: {lblTotalSales.Text} / 총 주문건수: {lblTotalOrders.Text}\n\n", cellFont));
+                        pdfDoc.Add(new Paragraph($"총 매출액: {lblTotalSales.Text} | 총 할인금액: {lblTotalDiscount.Text} | 총 주문건수: {lblTotalOrders.Text}\n\n", cellFont));
 
                         PdfPTable pdfTable = new PdfPTable(dgvSalesReport.Columns.Count) { WidthPercentage = 100 };
                         foreach (DataGridViewColumn col in dgvSalesReport.Columns)

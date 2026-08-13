@@ -43,6 +43,8 @@
             label2 = new Label();
             pnlChartArea = new Panel();
             dgvSalesReport = new DataGridView();
+            label4 = new Label();
+            lblTotalDiscount = new Label();
             pnlTop.SuspendLayout();
             pnlBottom.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvSalesReport).BeginInit();
@@ -117,10 +119,12 @@
             // 
             // pnlBottom
             // 
+            pnlBottom.Controls.Add(lblTotalDiscount);
             pnlBottom.Controls.Add(lblTotalOrders);
             pnlBottom.Controls.Add(btnExportPdf);
             pnlBottom.Controls.Add(btnExportCsv);
             pnlBottom.Controls.Add(lblTotalSales);
+            pnlBottom.Controls.Add(label4);
             pnlBottom.Controls.Add(label3);
             pnlBottom.Controls.Add(label2);
             pnlBottom.Dock = DockStyle.Bottom;
@@ -134,7 +138,7 @@
             lblTotalOrders.AutoSize = true;
             lblTotalOrders.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
             lblTotalOrders.ForeColor = Color.DodgerBlue;
-            lblTotalOrders.Location = new Point(356, 11);
+            lblTotalOrders.Location = new Point(265, 11);
             lblTotalOrders.Name = "lblTotalOrders";
             lblTotalOrders.Size = new Size(41, 21);
             lblTotalOrders.TabIndex = 0;
@@ -155,7 +159,7 @@
             lblTotalSales.AutoSize = true;
             lblTotalSales.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
             lblTotalSales.ForeColor = Color.DodgerBlue;
-            lblTotalSales.Location = new Point(121, 11);
+            lblTotalSales.Location = new Point(111, 11);
             lblTotalSales.Name = "lblTotalSales";
             lblTotalSales.Size = new Size(41, 21);
             lblTotalSales.TabIndex = 0;
@@ -165,7 +169,7 @@
             // 
             label3.AutoSize = true;
             label3.Font = new Font("맑은 고딕", 12F, FontStyle.Regular, GraphicsUnit.Point);
-            label3.Location = new Point(254, 11);
+            label3.Location = new Point(185, 11);
             label3.Name = "label3";
             label3.Size = new Size(80, 21);
             label3.TabIndex = 0;
@@ -203,6 +207,27 @@
             dgvSalesReport.Size = new Size(848, 140);
             dgvSalesReport.TabIndex = 3;
             // 
+            // label4
+            // 
+            label4.AutoSize = true;
+            label4.Font = new Font("맑은 고딕", 12F, FontStyle.Regular, GraphicsUnit.Point);
+            label4.Location = new Point(352, 11);
+            label4.Name = "label4";
+            label4.Size = new Size(112, 21);
+            label4.TabIndex = 0;
+            label4.Text = "할인된 금액 : ";
+            // 
+            // lblTotalDiscount
+            // 
+            lblTotalDiscount.AutoSize = true;
+            lblTotalDiscount.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lblTotalDiscount.ForeColor = Color.Red;
+            lblTotalDiscount.Location = new Point(463, 11);
+            lblTotalDiscount.Name = "lblTotalDiscount";
+            lblTotalDiscount.Size = new Size(41, 21);
+            lblTotalDiscount.TabIndex = 0;
+            lblTotalDiscount.Text = "0 원";
+            // 
             // UcSalesReport
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -238,5 +263,7 @@
         private Panel pnlChartArea;
         private DataGridView dgvSalesReport;
         private Button btnSearch;
+        private Label lblTotalDiscount;
+        private Label label4;
     }
 }
