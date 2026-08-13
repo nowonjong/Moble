@@ -10,6 +10,7 @@ namespace SushiKioskAdmin.Views
     public partial class UcMenuManagement : UserControl
     {
         private DataTable menuTable;
+        private string selectedImageFileName = ""; // 선택된 이미지 파일명 보관
 
         public UcMenuManagement()
         {
@@ -26,12 +27,21 @@ namespace SushiKioskAdmin.Views
             if (cmbCategory.Items.Count > 0)
                 cmbCategory.SelectedIndex = 0;
 
-            // 데이터테이블 컬럼 구조 생성
+            // MenuImages 폴더가 없으면 자동으로 생성
+            string imageFolderPath = Path.Combine(Application.StartupPath, "MenuImages");
+            if (!Directory.Exists(imageFolderPath))
+            {
+                Directory.CreateDirectory(imageFolderPath);
+            }
+
+            // 데이터테이블 컬럼 구조 생성 (6개 컬럼 매칭)
             menuTable = new DataTable();
             menuTable.Columns.Add("메뉴ID", typeof(int));
             menuTable.Columns.Add("메뉴명", typeof(string));
+            menuTable.Columns.Add("일어명", typeof(string));
+            menuTable.Columns.Add("영어명", typeof(string));
             menuTable.Columns.Add("가격", typeof(int));
-            menuTable.Columns.Add("품절여부", typeof(string));
+            menuTable.Columns.Add("이미지파일명", typeof(string));
 
             // CSV 파일 읽어서 데이터 로드
             LoadMenuFromCsv();
@@ -40,6 +50,14 @@ namespace SushiKioskAdmin.Views
             dgvMenuList.DataSource = menuTable;
             dgvMenuList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvMenuList.Columns["가격"].DefaultCellStyle.Format = "N0";
+
+            // ★ 일어명, 영어명, 이미지파일명 열은 그리드뷰에서 숨기기
+            if (dgvMenuList.Columns.Contains("일어명"))
+                dgvMenuList.Columns["일어명"].Visible = false;
+            if (dgvMenuList.Columns.Contains("영어명"))
+                dgvMenuList.Columns["영어명"].Visible = false;
+            if (dgvMenuList.Columns.Contains("이미지파일명"))
+                dgvMenuList.Columns["이미지파일명"].Visible = false;
 
             // 헤더 스타일 회색 고정
             dgvMenuList.EnableHeadersVisualStyles = false;
@@ -51,23 +69,18 @@ namespace SushiKioskAdmin.Views
             dgvMenuList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
-        /// <summary>
-        /// CSV 파일 읽어서 메뉴 정보 로드 (실행 파일 바로 옆 또는 Resources 폴더 대응)
-        /// </summary>
         private void LoadMenuFromCsv()
         {
             string csvPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
 
             if (!File.Exists(csvPath))
             {
-                // 없으면 Resources 폴더 경로도 체크
                 csvPath = Path.Combine(Application.StartupPath, "Resources", "susi_menu.csv");
             }
 
             if (!File.Exists(csvPath))
             {
-                MessageBox.Show("susi_menu.csv 파일을 찾을 수 없습니다.", "경고");
-                return;
+                return; // 파일이 없으면 빈 상태로 시작
             }
 
             string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
@@ -76,7 +89,7 @@ namespace SushiKioskAdmin.Views
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // CSV 구조: 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격 (, 5:품절여부 등 확장 가능)
+                // CSV 구조 (6개): 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격, 5:이미지파일명
                 string[] parts = line.Split(',');
                 if (parts.Length >= 5)
                 {
@@ -84,18 +97,16 @@ namespace SushiKioskAdmin.Views
                         int.TryParse(parts[4].Trim(), out int price))
                     {
                         string menuName = parts[1].Trim();
-                        // CSV에 품절여부 필드가 추가되어 있다면 반영, 아니면 기본 "판매중"
-                        string status = (parts.Length >= 6 && !string.IsNullOrWhiteSpace(parts[5])) ? parts[5].Trim() : "판매중";
+                        string jpName = parts.Length > 2 ? parts[2].Trim() : "";
+                        string enName = parts.Length > 3 ? parts[3].Trim() : "";
+                        string imgName = parts.Length > 5 ? parts[5].Trim() : "";
 
-                        menuTable.Rows.Add(menuId, menuName, price, status);
+                        menuTable.Rows.Add(menuId, menuName, jpName, enName, price, imgName);
                     }
                 }
             }
         }
 
-        /// <summary>
-        /// 변경된 전체 메뉴 목록을 CSV 파일에 저장 (동기화)
-        /// </summary>
         private void SaveAllMenusToCsv()
         {
             try
@@ -109,12 +120,12 @@ namespace SushiKioskAdmin.Views
 
                     int id = Convert.ToInt32(row["메뉴ID"]);
                     string name = row["메뉴명"].ToString();
+                    string jp = row["일어명"].ToString();
+                    string en = row["영어명"].ToString();
                     int price = Convert.ToInt32(row["가격"]);
-                    string status = row["품절여부"].ToString();
+                    string img = row["이미지파일명"].ToString();
 
-                    // 기존 CSV 구조(ID, 한글명, 일어명, 영어명, 가격, 품절여부) 호환 유지
-                    // 일어명/영어명이 따로 없다면 빈 값 또는 이름으로 대체
-                    sb.AppendLine($"{id},{name},{name},{name},{price},{status}");
+                    sb.AppendLine($"{id},{name},{jp},{en},{price},{img}");
                 }
 
                 File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(false));
@@ -168,6 +179,8 @@ namespace SushiKioskAdmin.Views
         private void BtnAdd_Click(object sender, EventArgs e)
         {
             string name = txtMenuName.Text.Trim();
+            string jpName = txtJapanese.Text.Trim();
+            string enName = txtEnglish.Text.Trim();
             string category = cmbCategory.SelectedItem?.ToString() ?? "";
             int price = GetPriceFromCategory(category);
 
@@ -177,7 +190,6 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            // 자동 ID 채번 (가장 큰 ID + 1)
             int newId = 1;
             if (menuTable.Rows.Count > 0)
             {
@@ -185,8 +197,8 @@ namespace SushiKioskAdmin.Views
                 if (maxId != DBNull.Value) newId = Convert.ToInt32(maxId) + 1;
             }
 
-            menuTable.Rows.Add(newId, name, price, "판매중");
-            SaveAllMenusToCsv(); // CSV 동기화 저장
+            menuTable.Rows.Add(newId, name, jpName, enName, price, selectedImageFileName);
+            SaveAllMenusToCsv();
 
             MessageBox.Show($"[{name}] 메뉴가 추가되었습니다. (가격: {price:N0}원)", "알림");
             ClearInputs();
@@ -207,31 +219,108 @@ namespace SushiKioskAdmin.Views
                 int price = GetPriceFromCategory(category);
 
                 rowView["메뉴명"] = txtMenuName.Text.Trim();
+                rowView["일어명"] = txtJapanese.Text.Trim();
+                rowView["영어명"] = txtEnglish.Text.Trim();
                 rowView["가격"] = price;
+                rowView["이미지파일명"] = selectedImageFileName;
 
-                SaveAllMenusToCsv(); // CSV 동기화 저장
+                SaveAllMenusToCsv();
 
-                MessageBox.Show($"[{rowView["메뉴명"]}] 정보가 수정되었습니다. (가격: {price:N0}원)", "알림");
+                MessageBox.Show($"[{rowView["메뉴명"]}] 정보가 수정되었습니다.", "알림");
             }
         }
 
-        // [품절 처리] 버튼 클릭
-        private void btnSoldOut_Click(object sender, EventArgs e) => ChangeStatus("품절");
+        // [품절 처리] 버튼 클릭 (필요시 활성화)
+        private void btnSoldOut_Click(object sender, EventArgs e) { }
 
-        // [판매 재개] 버튼 클릭
-        private void btnSalesResume_Click(object sender, EventArgs e) => ChangeStatus("판매중");
+        // [판매 재개] 버튼 클릭 (필요시 활성화)
+        private void btnSalesResume_Click(object sender, EventArgs e) { }
 
-        // 그리드 항목 선택 변경 시 좌측 입력폼 자동 채움
+        // [이미지 선택] 버튼 클릭 - 파일을 MenuImages 폴더로 복사하고 픽처박스에 띄우기
+        private void btnBrowseImage_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "이미지 파일 (*.jpg; *.jpeg; *.png)|*.jpg; *.jpeg; *.png";
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    selectedImageFileName = Path.GetFileName(ofd.FileName);
+
+                    string imageFolderPath = Path.Combine(Application.StartupPath, "MenuImages");
+                    if (!Directory.Exists(imageFolderPath))
+                    {
+                        Directory.CreateDirectory(imageFolderPath);
+                    }
+
+                    string targetPath = Path.Combine(imageFolderPath, selectedImageFileName);
+                    File.Copy(ofd.FileName, targetPath, true); // 덮어쓰기 허용
+
+                    using (var bmp = new Bitmap(targetPath))
+                    {
+                        picMenuImage.Image = new Bitmap(bmp);
+                    }
+                    picMenuImage.SizeMode = PictureBoxSizeMode.StretchImage;
+                }
+            }
+        }
+
+        // 그리드 항목 선택 변경 시 좌측 입력폼 및 이미지 자동 연동
         private void DgvMenuList_SelectionChanged(object sender, EventArgs e)
         {
             if (dgvMenuList.SelectedRows.Count > 0 &&
                 dgvMenuList.SelectedRows[0].DataBoundItem is DataRowView rowView)
             {
-                string menuName = rowView["메뉴명"].ToString();
+                txtMenuName.Text = rowView["메뉴명"].ToString();
+                txtJapanese.Text = rowView["일어명"].ToString();
+                txtEnglish.Text = rowView["영어명"].ToString();
                 int price = Convert.ToInt32(rowView["가격"]);
+                cmbCategory.SelectedItem = GetCategoryNameByPrice(price, txtMenuName.Text);
 
-                txtMenuName.Text = menuName;
-                cmbCategory.SelectedItem = GetCategoryNameByPrice(price, menuName);
+                // MenuImages 폴더 안에서 이미지 파일 로드
+                string imgFile = rowView["이미지파일명"]?.ToString() ?? "";
+                string imageFolderPath = Path.Combine(Application.StartupPath, "MenuImages");
+                string fullPath = Path.Combine(imageFolderPath, imgFile);
+
+                // 만약 CSV에 등록된 이미지명이 없거나 파일이 없다면, "한글메뉴명.png" 등으로 자동 대체 탐색 시도
+                if (string.IsNullOrEmpty(imgFile) || !File.Exists(fullPath))
+                {
+                    string menuName = txtMenuName.Text.Trim();
+                    string[] extensions = { ".png", ".jpg", ".jpeg" };
+                    foreach (var ext in extensions)
+                    {
+                        string tentativePath = Path.Combine(imageFolderPath, menuName + ext);
+                        if (File.Exists(tentativePath))
+                        {
+                            fullPath = tentativePath;
+                            imgFile = menuName + ext;
+                            break;
+                        }
+                    }
+                }
+
+                // 최종 이미지 로드
+                if (!string.IsNullOrEmpty(imgFile) && File.Exists(fullPath))
+                {
+                    try
+                    {
+                        using (var bmp = new Bitmap(fullPath))
+                        {
+                            picMenuImage.Image = new Bitmap(bmp);
+                        }
+                        picMenuImage.SizeMode = PictureBoxSizeMode.StretchImage;
+                        selectedImageFileName = imgFile;
+                    }
+                    catch
+                    {
+                        picMenuImage.Image = null;
+                        selectedImageFileName = "";
+                    }
+                }
+                else
+                {
+                    picMenuImage.Image = null;
+                    selectedImageFileName = "";
+                }
             }
         }
 
@@ -239,37 +328,22 @@ namespace SushiKioskAdmin.Views
         // 4. 내부 헬퍼 메서드
         // ==========================================
 
-        private void ChangeStatus(string newStatus)
-        {
-            if (dgvMenuList.CurrentRow == null || dgvMenuList.CurrentRow.Index < 0)
-            {
-                MessageBox.Show("상태를 변경할 메뉴를 목록에서 먼저 선택해 주세요.", "안내");
-                return;
-            }
-
-            if (dgvMenuList.CurrentRow.DataBoundItem is DataRowView rowView)
-            {
-                rowView["품절여부"] = newStatus;
-                SaveAllMenusToCsv(); // CSV 동기화 저장
-
-                MessageBox.Show($"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
-            }
-        }
-
         private void ClearInputs()
         {
             txtMenuName.Clear();
+            txtJapanese.Clear();
+            txtEnglish.Clear();
+            picMenuImage.Image = null;
+            selectedImageFileName = "";
         }
 
         private void UcMenuManagement_Load(object sender, EventArgs e)
         {
-            // 반복되던 컬럼 너비 설정을 배열과 반복문으로 깔끔하게 압축
             var columnWidths = new (string ColumnName, int Width)[]
             {
                 ("메뉴ID", 80),
-                ("메뉴명", 150),
-                ("가격", 100),
-                ("품절여부", 90)
+                ("메뉴명", 200),
+                ("가격", 120)
             };
 
             foreach (var col in columnWidths)

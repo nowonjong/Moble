@@ -32,10 +32,10 @@ namespace SushiKioskAdmin.Views
             orderTable.Columns.Add("현재상태");
 
             // 샘플 더미 데이터 생성
-            orderTable.Rows.Add("101", "앱", "배달", "12:05", "연어초밥(10p) 1개", "15,000원", "접수 대기");
+            orderTable.Rows.Add("101", "앱", "배달", "12:05", "연어초밥 10개 ", "15,000원", "접수 대기");
             orderTable.Rows.Add("102", "키오스크", "매장", "12:08", "Table 03 - 모듬초밥 2개", "32,000원", "조리 중");
-            orderTable.Rows.Add("103", "앱", "포장", "12:10", "광어초밥(10p) 1개", "16,000원", "접수 대기");
-            orderTable.Rows.Add("104", "키오스크", "포장", "12:12", "참치초밥(10p) 1개", "20,000원", "조리 중");
+            orderTable.Rows.Add("103", "앱", "포장", "12:10", "광어초밥 10개", "16,000원", "접수 대기");
+            orderTable.Rows.Add("104", "키오스크", "포장", "12:12", "참치초밥 10개", "20,000원", "조리 중");
 
             // 그리드뷰 데이터 바인딩 및 기본 옵션 설정
             dgvOrders.DataSource = orderTable;
