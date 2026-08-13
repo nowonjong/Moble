@@ -81,7 +81,8 @@ namespace SushiKioskAdmin.Views
                         string stockCode = "STK-" + stockIndex.ToString("D3");
 
                         // CSV에 없는 값들은 초기값 설정
-                        int currentStock = 0;
+                        Random rand = new Random();
+                        int currentStock = rand.Next(10);
                         int lastOrderQty = 0;
                         string orderStatus = "대기중";
                         stockTable.Rows.Add(stockCode, stockName, currentStock, unit, lastOrderQty,  orderStatus

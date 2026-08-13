@@ -34,13 +34,14 @@ namespace SushiKioskAdmin.Views
                 Directory.CreateDirectory(imageFolderPath);
             }
 
-            // 데이터테이블 컬럼 구조 생성 (6개 컬럼 매칭)
+            // 데이터테이블 컬럼 구조 생성 (7개 컬럼: ID, 한글명, 일어명, 영어명, 가격, 품절여부, 이미지파일명)
             menuTable = new DataTable();
             menuTable.Columns.Add("메뉴ID", typeof(int));
             menuTable.Columns.Add("메뉴명", typeof(string));
             menuTable.Columns.Add("일어명", typeof(string));
             menuTable.Columns.Add("영어명", typeof(string));
             menuTable.Columns.Add("가격", typeof(int));
+            menuTable.Columns.Add("품절여부", typeof(string));
             menuTable.Columns.Add("이미지파일명", typeof(string));
 
             // CSV 파일 읽어서 데이터 로드
@@ -89,7 +90,7 @@ namespace SushiKioskAdmin.Views
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // CSV 구조 (6개): 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격, 5:이미지파일명
+                // CSV 구조: 0:ID, 1:한글명, 2:일어명, 3:영어명, 4:가격, 5:품절여부(선택), 6:이미지파일명
                 string[] parts = line.Split(',');
                 if (parts.Length >= 5)
                 {
@@ -99,9 +100,23 @@ namespace SushiKioskAdmin.Views
                         string menuName = parts[1].Trim();
                         string jpName = parts.Length > 2 ? parts[2].Trim() : "";
                         string enName = parts.Length > 3 ? parts[3].Trim() : "";
-                        string imgName = parts.Length > 5 ? parts[5].Trim() : "";
 
-                        menuTable.Rows.Add(menuId, menuName, jpName, enName, price, imgName);
+                        // 기존 6개 컬럼 구조(마지막이 이미지)인지, 7개 컬럼(품절여부 포함)인지 판별
+                        string status = "판매중";
+                        string imgName = "";
+
+                        if (parts.Length >= 7)
+                        {
+                            status = string.IsNullOrWhiteSpace(parts[5]) ? "판매중" : parts[5].Trim();
+                            imgName = parts[6].Trim();
+                        }
+                        else if (parts.Length == 6)
+                        {
+                            // 6개 컬럼일 때 5번째는 기존 이미지 파일명이었음
+                            imgName = parts[5].Trim();
+                        }
+
+                        menuTable.Rows.Add(menuId, menuName, jpName, enName, price, status, imgName);
                     }
                 }
             }
@@ -123,9 +138,11 @@ namespace SushiKioskAdmin.Views
                     string jp = row["일어명"].ToString();
                     string en = row["영어명"].ToString();
                     int price = Convert.ToInt32(row["가격"]);
+                    string status = row["품절여부"].ToString();
                     string img = row["이미지파일명"].ToString();
 
-                    sb.AppendLine($"{id},{name},{jp},{en},{price},{img}");
+                    // 7개 컬럼 구조로 저장: ID, 한글명, 일어명, 영어명, 가격, 품절여부, 이미지파일명
+                    sb.AppendLine($"{id},{name},{jp},{en},{price},{status},{img}");
                 }
 
                 File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(false));
@@ -197,7 +214,7 @@ namespace SushiKioskAdmin.Views
                 if (maxId != DBNull.Value) newId = Convert.ToInt32(maxId) + 1;
             }
 
-            menuTable.Rows.Add(newId, name, jpName, enName, price, selectedImageFileName);
+            menuTable.Rows.Add(newId, name, jpName, enName, price, "판매중", selectedImageFileName);
             SaveAllMenusToCsv();
 
             MessageBox.Show($"[{name}] 메뉴가 추가되었습니다. (가격: {price:N0}원)", "알림");
@@ -230,11 +247,11 @@ namespace SushiKioskAdmin.Views
             }
         }
 
-        // [품절 처리] 버튼 클릭 (필요시 활성화)
-        private void btnSoldOut_Click(object sender, EventArgs e) { }
+        // [품절 처리] 버튼 클릭
+        private void btnSoldOut_Click(object sender, EventArgs e) => ChangeStatus("품절");
 
-        // [판매 재개] 버튼 클릭 (필요시 활성화)
-        private void btnSalesResume_Click(object sender, EventArgs e) { }
+        // [판매 재개] 버튼 클릭
+        private void btnSalesResume_Click(object sender, EventArgs e) => ChangeStatus("판매중");
 
         // [이미지 선택] 버튼 클릭 - 파일을 MenuImages 폴더로 복사하고 픽처박스에 띄우기
         private void btnBrowseImage_Click(object sender, EventArgs e)
@@ -328,6 +345,28 @@ namespace SushiKioskAdmin.Views
         // 4. 내부 헬퍼 메서드
         // ==========================================
 
+        // [품절/판매재개 상태 변경 공통 메서드]
+        private void ChangeStatus(string newStatus)
+        {
+            if (dgvMenuList.CurrentRow == null || dgvMenuList.CurrentRow.Index < 0)
+            {
+                MessageBox.Show("상태를 변경할 메뉴를 목록에서 먼저 선택해 주세요.", "안내");
+                return;
+            }
+
+            if (dgvMenuList.CurrentRow.DataBoundItem is DataRowView rowView)
+            {
+                rowView["품절여부"] = newStatus;
+                SaveAllMenusToCsv();
+
+                // ★ 바인딩 컨텍스트를 강제로 갱신하여 화면 글씨를 즉시 다시 그림
+                CurrencyManager cm = (CurrencyManager)dgvMenuList.BindingContext[dgvMenuList.DataSource];
+                cm.Refresh();
+
+                MessageBox.Show($"[{rowView["메뉴명"]}] 메뉴가 [{newStatus}] 상태로 변경되었습니다.", "알림");
+            }
+        }
+
         private void ClearInputs()
         {
             txtMenuName.Clear();
@@ -341,9 +380,10 @@ namespace SushiKioskAdmin.Views
         {
             var columnWidths = new (string ColumnName, int Width)[]
             {
-                ("메뉴ID", 80),
-                ("메뉴명", 200),
-                ("가격", 120)
+                ("메뉴ID", 70),
+                ("메뉴명", 160),
+                ("가격", 100),
+                ("품절여부", 90)
             };
 
             foreach (var col in columnWidths)
