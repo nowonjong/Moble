@@ -24,11 +24,18 @@ namespace SushiKioskAdmin.Views
             flpTables.Controls.Clear();
             Dictionary<string, int> tableAmounts = GetTableAmountsFromCsv();
 
-            for (int i = 1; i <= 34; i++)
+            int totalTables = 34;
+            int occupiedTables = 0;
+
+            for (int i = 1; i <= totalTables; i++)
             {
                 string tableKey = $"Table {i:D2}";
                 bool isOccupied = tableAmounts.ContainsKey(tableKey) && tableAmounts[tableKey] > 0;
                 int amountValue = isOccupied ? tableAmounts[tableKey] : 0;
+
+                if (isOccupied)
+                    occupiedTables++;
+
                 string amountStr = $"{amountValue:N0}원";
                 string statusText = isOccupied ? "식사 중" : "빈 테이블";
 
@@ -50,6 +57,12 @@ namespace SushiKioskAdmin.Views
                 btnTable.Click += TableCard_Click;
                 flpTables.Controls.Add(btnTable);
             }
+
+            int emptyTables = totalTables - occupiedTables;
+
+            lblTotalTables.Text = $"{totalTables}개";
+            lblOccupiedTables.Text = $"{occupiedTables}개";
+            lblEmptyTables.Text = $"{emptyTables}개";
         }
 
         private void InitAutoRefresh()
