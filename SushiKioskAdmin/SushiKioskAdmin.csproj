@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="iTextSharp" Version="5.5.13.6" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="WinForms.DataVisualization" Version="1.10.2" />
   </ItemGroup>
 

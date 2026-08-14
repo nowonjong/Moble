@@ -28,11 +28,13 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             pnlSummary = new Panel();
             lblEmptyTables = new Label();
             lblOccupiedTables = new Label();
             lblTotalTables = new Label();
             flpTables = new FlowLayoutPanel();
+            refreshTimer = new System.Windows.Forms.Timer(components);
             pnlSummary.SuspendLayout();
             SuspendLayout();
             // 
@@ -86,6 +88,12 @@
             flpTables.Size = new Size(848, 390);
             flpTables.TabIndex = 1;
             // 
+            // refreshTimer
+            // 
+            refreshTimer.Enabled = true;
+            refreshTimer.Interval = 1000;
+            refreshTimer.Tick += refreshTimer_Tick;
+            // 
             // UcTableMonitor
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -106,5 +114,6 @@
         private Label lblEmptyTables;
         private Label lblOccupiedTables;
         private FlowLayoutPanel flpTables;
+        private System.Windows.Forms.Timer refreshTimer;
     }
 }

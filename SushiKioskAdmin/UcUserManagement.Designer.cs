@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             pnlSearch = new Panel();
             label3 = new Label();
             btnDeleteUser = new Button();
@@ -47,6 +48,7 @@
             label2 = new Label();
             label1 = new Label();
             dgvUserList = new DataGridView();
+            refreshTimer = new System.Windows.Forms.Timer(components);
             pnlSearch.SuspendLayout();
             panel1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvUserList).BeginInit();
@@ -252,6 +254,11 @@
             dgvUserList.TabIndex = 2;
             dgvUserList.SelectionChanged += dgvUserList_SelectionChanged;
             // 
+            // refreshTimer
+            // 
+            refreshTimer.Enabled = true;
+            refreshTimer.Interval = 1000;
+            // 
             // UcUserManagement
             // 
             AutoScaleMode = AutoScaleMode.None;
@@ -294,5 +301,6 @@
         private TextBox txtInputAddress;
         private TextBox txtInputPhone;
         private TextBox txtInputName;
+        private System.Windows.Forms.Timer refreshTimer;
     }
 }

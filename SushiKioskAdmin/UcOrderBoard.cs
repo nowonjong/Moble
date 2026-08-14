@@ -1,40 +1,43 @@
-﻿using System;
+﻿using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
-using System.Collections.Generic;
 
 namespace SushiKioskAdmin.Views
 {
     public partial class UcOrderBoard : UserControl
     {
         private DataTable orderTable;
+        private DateTime lastOrdersModifiedTime = DateTime.MinValue;
+        private DateTime lastItemsModifiedTime = DateTime.MinValue;
 
         public UcOrderBoard()
         {
             InitializeComponent();
             InitOrderData();
+            InitAutoRefresh();
         }
 
         private void InitOrderData()
         {
             orderTable = new DataTable();
-            orderTable.Columns.Add("주문번호"); // Identifier (T02-01 또는 앱 영수증번호)
-            orderTable.Columns.Add("주문출처"); // Source (키오스크, 앱)
-            orderTable.Columns.Add("수령방식"); // OrderType (매장, 포장, 배달)
-            orderTable.Columns.Add("주문시간"); // OrderTime
-            orderTable.Columns.Add("주문내역"); // items.csv에서 조합
-            orderTable.Columns.Add("금액", typeof(int)); // TotalAmount
-            orderTable.Columns.Add("현재상태"); // Status
+            orderTable.Columns.Add("주문번호");
+            orderTable.Columns.Add("주문출처");
+            orderTable.Columns.Add("수령방식");
+            orderTable.Columns.Add("주문시간");
+            orderTable.Columns.Add("주문내역");
+            orderTable.Columns.Add("금액", typeof(int));
+            orderTable.Columns.Add("현재상태");
 
             LoadOrdersFromCsv();
 
             dgvOrders.DataSource = orderTable;
             dgvOrders.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
             dgvOrders.Columns["금액"].DefaultCellStyle.Format = "N0";
-
             dgvOrders.EnableHeadersVisualStyles = false;
             dgvOrders.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvOrders.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
@@ -42,155 +45,158 @@ namespace SushiKioskAdmin.Views
             dgvOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
-        /// <summary>
-        /// susi_orders_realtime.csv를 읽어와서 실시간 탭에 표시 (완료된 주문은 제외)
-        /// CSV 구조: Identifier, Source, OrderType, OrderTime, TotalAmount, Status
-        /// </summary>
+        private void InitAutoRefresh()
+        {
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            if (File.Exists(ordersPath))
+                lastOrdersModifiedTime = File.GetLastWriteTime(ordersPath);
+
+            if (File.Exists(itemsPath))
+                lastItemsModifiedTime = File.GetLastWriteTime(itemsPath);
+        }
+
         private void LoadOrdersFromCsv()
         {
             orderTable.Clear();
+
             string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
-            if (!File.Exists(ordersPath)) return;
+
+            if (!File.Exists(ordersPath))
+                return;
 
             string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
 
             foreach (string line in lines)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
 
                 string[] parts = line.Split(',');
-                if (parts.Length >= 6)
-                {
-                    string identifier = parts[0].Trim();
-                    string source = parts[1].Trim();
-                    string orderType = parts[2].Trim();
-                    string orderTimeStr = parts[3].Trim();
 
-                    if (!int.TryParse(parts[4].Trim(), out int totalAmount)) totalAmount = 0;
-                    string orderStatus = parts[5].Trim();
+                if (parts.Length < 6)
+                    continue;
 
-                    // 완료된 주문은 실시간 탭에서 제외
-                    if (orderStatus == "결제완료" || orderStatus == "픽업완료" || orderStatus == "주문거절")
-                    {
-                        continue;
-                    }
+                string identifier = parts[0].Trim();
+                string source = parts[1].Trim();
+                string orderType = parts[2].Trim();
+                string orderTimeStr = parts[3].Trim();
+                int totalAmount = int.TryParse(parts[4].Trim(), out int amount) ? amount : 0;
+                string orderStatus = parts[5].Trim();
 
-                    string orderTime = orderTimeStr;
-                    if (DateTime.TryParse(orderTimeStr, out DateTime dt))
-                    {
-                        orderTime = dt.ToString("HH:mm");
-                    }
+                if (orderStatus == "결제완료" || orderStatus == "픽업완료" || orderStatus == "주문거절")
+                    continue;
 
-                    string summaryText = GetOrderItemsSummary(identifier);
+                string orderTime = orderTimeStr;
 
-                    orderTable.Rows.Add(identifier, source, orderType, orderTime, summaryText, totalAmount, orderStatus);
-                }
+                if (DateTime.TryParse(orderTimeStr, out DateTime dt))
+                    orderTime = dt.ToString("HH:mm");
+
+                string summaryText = GetOrderItemsSummary(identifier);
+                orderTable.Rows.Add(identifier, source, orderType, orderTime, summaryText, totalAmount, orderStatus);
             }
+
             ApplyCurrentFilter();
         }
 
         private string GetOrderItemsSummary(string identifier)
         {
             string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
-            if (!File.Exists(itemsPath)) return "주문 내역 없음";
+
+            if (!File.Exists(itemsPath))
+                return "주문 내역 없음";
 
             string[] lines = File.ReadAllLines(itemsPath, Encoding.UTF8);
-            var itemList = new List<string>();
+            List<string> itemList = new List<string>();
 
             foreach (string line in lines)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
 
                 string[] parts = line.Split(',');
-                if (parts.Length >= 6)
-                {
-                    string keyId = parts[0].Trim();
-                    if (keyId.Equals(identifier, StringComparison.OrdinalIgnoreCase))
-                    {
-                        string menuName = parts[1].Trim();
-                        int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
-                        int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
 
-                        if (discountQty > 0)
-                        {
-                            itemList.Add($"{menuName} {qty}개 (할인 {discountQty}개)");
-                        }
-                        else
-                        {
-                            itemList.Add($"{menuName} {qty}개");
-                        }
-                    }
-                }
+                if (parts.Length < 6)
+                    continue;
+
+                string keyId = parts[0].Trim();
+
+                if (!keyId.Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string menuName = parts[1].Trim();
+                int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
+                int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
+
+                if (discountQty > 0)
+                    itemList.Add($"{menuName} {qty}개 (할인 {discountQty}개)");
+                else
+                    itemList.Add($"{menuName} {qty}개");
             }
 
             return itemList.Count > 0 ? string.Join(", ", itemList) : "일반 주문";
         }
 
-        private void SaveOrdersToCsv()
+        private void UpdateOrderStatus(string identifier, string newStatus)
         {
-            try
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+
+            if (!File.Exists(ordersPath))
+                return;
+
+            string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
-                var allLines = File.Exists(ordersPath) ? new List<string>(File.ReadAllLines(ordersPath, Encoding.UTF8)) : new List<string>();
-                var currentDict = new Dictionary<string, string>();
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                    continue;
 
-                foreach (var l in allLines)
+                string[] parts = lines[i].Split(',');
+
+                if (parts.Length < 6)
+                    continue;
+
+                if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (string.IsNullOrWhiteSpace(l)) continue;
-                    var p = l.Split(',');
-                    if (p.Length > 0) currentDict[p[0].Trim()] = l;
+                    parts[5] = newStatus;
+                    lines[i] = string.Join(",", parts);
+                    break;
                 }
-
-                StringBuilder sb = new StringBuilder();
-
-                foreach (var kvp in currentDict)
-                {
-                    string id = kvp.Key;
-                    string originalLine = kvp.Value;
-
-                    DataRow foundRow = null;
-                    foreach (DataRow r in orderTable.Rows)
-                    {
-                        if (r["주문번호"].ToString() == id)
-                        {
-                            foundRow = r;
-                            break;
-                        }
-                    }
-
-                    if (foundRow != null)
-                    {
-                        var p = originalLine.Split(',');
-                        string identifier = p.Length > 0 ? p[0] : id;
-                        string source = p.Length > 1 ? p[1] : foundRow["주문출처"].ToString();
-                        string orderType = p.Length > 2 ? p[2] : foundRow["수령방식"].ToString();
-                        string orderTime = p.Length > 3 ? p[3] : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                        string totalAmount = p.Length > 4 ? p[4] : foundRow["금액"].ToString();
-                        string orderStatus = foundRow["현재상태"].ToString();
-
-                        sb.AppendLine($"{identifier},{source},{orderType},{orderTime},{totalAmount},{orderStatus}");
-                    }
-                    else
-                    {
-                        var p = originalLine.Split(',');
-                        if (p.Length >= 6)
-                        {
-                            p[5] = "픽업완료";
-                            sb.AppendLine(string.Join(",", p));
-                        }
-                        else
-                        {
-                            sb.AppendLine(originalLine);
-                        }
-                    }
-                }
-
-                File.WriteAllText(ordersPath, sb.ToString(), new UTF8Encoding(false));
             }
-            catch (Exception ex)
+
+            File.WriteAllLines(ordersPath, lines, new UTF8Encoding(false));
+            lastOrdersModifiedTime = File.GetLastWriteTime(ordersPath);
+        }
+
+        private void RemoveRejectedAppOrder(string identifier)
+        {
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+            string paymentPath = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
+
+            RemoveCsvRowsByKey(ordersPath, identifier);
+            RemoveCsvRowsByKey(itemsPath, identifier);
+            RemoveCsvRowsByKey(paymentPath, identifier);
+        }
+
+        private void RemoveCsvRowsByKey(string path, string identifier)
+        {
+            if (!File.Exists(path))
+                return;
+
+            List<string> lines = new List<string>(File.ReadAllLines(path, Encoding.UTF8));
+
+            lines.RemoveAll(line =>
             {
-                MessageBox.Show("주문 저장 오류: " + ex.Message);
-            }
+                if (string.IsNullOrWhiteSpace(line))
+                    return false;
+
+                string[] parts = line.Split(',');
+                return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
+            });
+
+            File.WriteAllLines(path, lines, new UTF8Encoding(false));
         }
 
         private void FilterOrders_CheckedChanged(object sender, EventArgs e)
@@ -200,7 +206,6 @@ namespace SushiKioskAdmin.Views
                 ApplyCurrentFilter();
 
                 bool isAppOrderFilter = rdoApp.Checked || rdoWaiting.Checked;
-
                 btnAccept.Visible = isAppOrderFilter;
                 btnReject.Visible = isAppOrderFilter;
                 btnCookDone.Visible = isAppOrderFilter;
@@ -208,10 +213,25 @@ namespace SushiKioskAdmin.Views
             }
         }
 
-        private void btnAccept_Click(object sender, EventArgs e) => ProcessAppOrder("조리 중");
-        private void btnReject_Click(object sender, EventArgs e) => ProcessAppOrder("주문 거절");
-        private void btnCookDone_Click(object sender, EventArgs e) => ProcessAppOrder("조리 완료");
-        private void btnPickUpDone_Click(object sender, EventArgs e) => ProcessAppOrder("픽업완료");
+        private void btnAccept_Click(object sender, EventArgs e)
+        {
+            ProcessAppOrder("조리 중");
+        }
+
+        private void btnReject_Click(object sender, EventArgs e)
+        {
+            ProcessAppOrder("주문 거절");
+        }
+
+        private void btnCookDone_Click(object sender, EventArgs e)
+        {
+            ProcessAppOrder("조리 완료");
+        }
+
+        private void btnPickUpDone_Click(object sender, EventArgs e)
+        {
+            ProcessAppOrder("픽업완료");
+        }
 
         private void ProcessAppOrder(string newStatus)
         {
@@ -221,27 +241,105 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            if (dgvOrders.SelectedRows[0].DataBoundItem is DataRowView rowView)
-            {
-                string source = rowView["주문출처"].ToString();
+            if (!(dgvOrders.SelectedRows[0].DataBoundItem is DataRowView rowView))
+                return;
 
-                if (source == "키오스크")
+            string identifier = rowView["주문번호"].ToString();
+            string source = rowView["주문출처"].ToString();
+            string currentStatus = rowView["현재상태"].ToString();
+
+            if (source == "키오스크")
+            {
+                MessageBox.Show("키오스크 주문은 테이블 결제를 통해 처리됩니다.", "안내");
+                return;
+            }
+
+            if (newStatus == "조리 중")
+            {
+                if (currentStatus != "접수 대기")
                 {
-                    MessageBox.Show("키오스크 주문은 테이블 결제를 통해 처리됩니다.", "안내");
+                    MessageBox.Show("접수 대기 상태의 주문만 접수할 수 있습니다.", "안내");
                     return;
                 }
 
-                rowView["현재상태"] = newStatus;
+                UpdateOrderStatus(identifier, "조리 중");
+                LoadOrdersFromCsv();
+                MessageBox.Show("앱 주문을 접수했습니다. 조리를 시작합니다.", "알림");
+                return;
+            }
 
-                if (newStatus == "픽업완료" || newStatus == "주문 거절")
+            if (newStatus == "조리 완료")
+            {
+                if (currentStatus != "조리 중")
                 {
-                    rowView.Row.Delete();
+                    MessageBox.Show("조리 중인 주문만 조리 완료 처리할 수 있습니다.", "안내");
+                    return;
                 }
 
-                SaveOrdersToCsv();
+                UpdateOrderStatus(identifier, "조리 완료");
+                LoadOrdersFromCsv();
+                MessageBox.Show("조리 완료 처리되었습니다.", "알림");
+                return;
+            }
+
+            if (newStatus == "주문 거절")
+            {
+                if (currentStatus != "접수 대기")
+                {
+                    MessageBox.Show("접수 대기 상태의 주문만 거절할 수 있습니다.", "안내");
+                    return;
+                }
+
+                DialogResult result = MessageBox.Show("선택한 앱 주문을 거절하시겠습니까?", "주문 거절", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (result != DialogResult.Yes)
+                    return;
+
+                RemoveRejectedAppOrder(identifier);
                 LoadOrdersFromCsv();
 
-                MessageBox.Show($"앱 주문 처리 완료: [{newStatus}]", "알림");
+                MessageBox.Show("앱 주문이 거절되었습니다.", "알림");
+                return;
+            }
+
+            if (newStatus == "픽업완료")
+            {
+                if (currentStatus != "조리 완료")
+                {
+                    MessageBox.Show("조리 완료 상태의 주문만 픽업 완료 처리할 수 있습니다.", "안내");
+                    return;
+                }
+
+                MainAdminForm mainForm = FindForm() as MainAdminForm;
+
+                if (mainForm == null)
+                {
+                    MessageBox.Show("메인 관리자 폼을 찾을 수 없습니다.", "오류");
+                    return;
+                }
+
+                string responseJson = mainForm.CompleteAppOrder(identifier);
+
+                try
+                {
+                    JObject response = JObject.Parse(responseJson);
+                    string status = response["Status"]?.ToString();
+                    string message = response["Message"]?.ToString();
+
+                    if (status == "SUCCESS")
+                    {
+                        LoadOrdersFromCsv();
+                        MessageBox.Show("픽업 완료 처리되었습니다.\n매출 내역으로 이동되었습니다.", "알림");
+                    }
+                    else
+                    {
+                        MessageBox.Show($"픽업 완료 처리에 실패했습니다.\n{message}", "오류");
+                    }
+                }
+                catch
+                {
+                    MessageBox.Show("픽업 완료 처리 응답을 확인할 수 없습니다.", "오류");
+                }
             }
         }
 
@@ -249,10 +347,14 @@ namespace SushiKioskAdmin.Views
         {
             DataView dv = orderTable.DefaultView;
 
-            if (rdoAll.Checked) dv.RowFilter = "";
-            else if (rdoApp.Checked) dv.RowFilter = "주문출처 = '앱'";
-            else if (rdoKiosk.Checked) dv.RowFilter = "주문출처 = '키오스크'";
-            else if (rdoWaiting.Checked) dv.RowFilter = "주문출처 = '앱' AND 현재상태 = '접수 대기'";
+            if (rdoAll.Checked)
+                dv.RowFilter = "";
+            else if (rdoApp.Checked)
+                dv.RowFilter = "주문출처 = '앱'";
+            else if (rdoKiosk.Checked)
+                dv.RowFilter = "주문출처 = '키오스크'";
+            else if (rdoWaiting.Checked)
+                dv.RowFilter = "주문출처 = '앱' AND 현재상태 = '접수 대기'";
         }
 
         private void UcOrderBoard_Load(object sender, EventArgs e)
@@ -282,6 +384,22 @@ namespace SushiKioskAdmin.Views
             btnReject.Visible = isAppOrderFilter;
             btnCookDone.Visible = isAppOrderFilter;
             btnPickUpDone.Visible = isAppOrderFilter;
+        }
+
+        private void refreshTimer_Tick(object sender, EventArgs e)
+        {
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            DateTime currentOrdersModifiedTime = File.Exists(ordersPath) ? File.GetLastWriteTime(ordersPath) : DateTime.MinValue;
+            DateTime currentItemsModifiedTime = File.Exists(itemsPath) ? File.GetLastWriteTime(itemsPath) : DateTime.MinValue;
+
+            if (currentOrdersModifiedTime != lastOrdersModifiedTime || currentItemsModifiedTime != lastItemsModifiedTime)
+            {
+                lastOrdersModifiedTime = currentOrdersModifiedTime;
+                lastItemsModifiedTime = currentItemsModifiedTime;
+                LoadOrdersFromCsv();
+            }
         }
     }
 }

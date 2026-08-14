@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             pnlFilter = new Panel();
             rdoWaiting = new RadioButton();
             rdoKiosk = new RadioButton();
@@ -39,6 +40,7 @@
             btnReject = new Button();
             btnAccept = new Button();
             dgvOrders = new DataGridView();
+            refreshTimer = new System.Windows.Forms.Timer(components);
             pnlFilter.SuspendLayout();
             pnlControl.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)dgvOrders).BeginInit();
@@ -171,6 +173,12 @@
             dgvOrders.Size = new Size(848, 340);
             dgvOrders.TabIndex = 3;
             // 
+            // refreshTimer
+            // 
+            refreshTimer.Enabled = true;
+            refreshTimer.Interval = 1000;
+            refreshTimer.Tick += refreshTimer_Tick;
+            // 
             // UcOrderBoard
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -201,5 +209,6 @@
         private Button btnAccept;
         private DataGridView dgvOrders;
         private Button btnPickUpDone;
+        private System.Windows.Forms.Timer refreshTimer;
     }
 }
