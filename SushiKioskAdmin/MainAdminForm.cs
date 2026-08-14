@@ -33,7 +33,6 @@ namespace SushiKioskAdmin
         {
             pnlSidebar.BackColor = Color.FromArgb(45, 45, 48);
             Button[] navButtons = { btnNavOrder, btnNavTable, btnNavMenu, btnNavHistory, btnNavUser, btnNavStock, btnNavReport };
-
             foreach (var btn in navButtons)
             {
                 btn.FlatStyle = FlatStyle.Flat;
@@ -51,13 +50,13 @@ namespace SushiKioskAdmin
         private void MainAdminForm_Load(object sender, EventArgs e)
         {
             ShowView(new UcOrderBoard(), btnNavOrder);
+            UpdateOrderNotice();
             StartSocketServer();
         }
 
         private void StartSocketServer()
         {
             isServerRunning = true;
-
             Task.Run(() =>
             {
                 try
@@ -65,7 +64,6 @@ namespace SushiKioskAdmin
                     server = new TcpListener(IPAddress.Any, SERVER_PORT);
                     server.Start();
                     System.Diagnostics.Debug.WriteLine($"[소켓 서버] 포트 {SERVER_PORT}에서 서버가 시작되었습니다.");
-
                     while (isServerRunning)
                     {
                         TcpClient client = server.AcceptTcpClient();
@@ -87,7 +85,6 @@ namespace SushiKioskAdmin
                 {
                     byte[] buffer = new byte[4096];
                     int bytesRead = stream.Read(buffer, 0, buffer.Length);
-
                     if (bytesRead == 0)
                         return;
 
@@ -160,7 +157,6 @@ namespace SushiKioskAdmin
                     if (memberId > 0)
                     {
                         int currentPoint = GetMemberPoint(memberId);
-
                         if (usedPoint > currentPoint)
                             return "{\"Status\":\"FAIL\",\"Message\":\"Not enough points.\"}";
                     }
@@ -171,16 +167,13 @@ namespace SushiKioskAdmin
 
                 string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
                 string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
-
                 string realtimeLine = $"{identifier},{source},{orderType},{orderTime},{totalAmount},{status}";
                 File.AppendAllLines(realtimePath, new[] { realtimeLine }, new UTF8Encoding(false));
 
                 JArray items = packet["Items"] as JArray;
-
                 if (items != null)
                 {
                     List<string> itemLines = new List<string>();
-
                     foreach (var item in items)
                     {
                         string menuName = item["MenuName"]?.ToString();
@@ -188,7 +181,6 @@ namespace SushiKioskAdmin
                         int quantity = item["Quantity"]?.Value<int>() ?? 0;
                         int discountQty = item["DiscountQty"]?.Value<int>() ?? 0;
                         decimal subTotal = item["SubTotal"]?.Value<decimal>() ?? 0;
-
                         itemLines.Add($"{identifier},{menuName},{price},{quantity},{discountQty},{subTotal}");
                     }
 
@@ -199,6 +191,7 @@ namespace SushiKioskAdmin
                 if (source == "앱")
                     SaveAppPayment(identifier, memberId, usedPoint, earnedPoint, paymentMethod);
 
+                UpdateOrderNotice();
                 return "{\"Status\":\"SUCCESS\",\"Message\":\"Order registered successfully.\"}";
             }
             catch (Exception ex)
@@ -249,7 +242,6 @@ namespace SushiKioskAdmin
                 string newReceiptNo = GenerateNewReceiptNumber();
                 string source = "키오스크";
                 string orderType = tablePrefix != null ? "매장" : "포장";
-
                 string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
                 string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
 
@@ -295,6 +287,8 @@ namespace SushiKioskAdmin
                     UpdateTableItemKeyIds(tablePrefix, newReceiptNo);
                 else
                     UpdateItemKeyId(identifier, newReceiptNo);
+
+                UpdateOrderNotice();
 
                 return new JObject
                 {
@@ -363,6 +357,7 @@ namespace SushiKioskAdmin
                 RemoveRealtimeOrder(identifier);
                 RemoveAppPayment(identifier);
                 UpdateItemKeyId(identifier, receiptNo);
+                UpdateOrderNotice();
 
                 return new JObject
                 {
@@ -398,6 +393,7 @@ namespace SushiKioskAdmin
                 RemoveRealtimeOrder(identifier);
                 RemoveAppPayment(identifier);
                 RemoveOrderItems(identifier);
+                UpdateOrderNotice();
 
                 return new JObject
                 {
@@ -893,6 +889,46 @@ namespace SushiKioskAdmin
             return ProcessPaymentComplete(packet);
         }
 
+        public void UpdateOrderNotice()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(UpdateOrderNotice));
+                return;
+            }
+
+            string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            int waitingCount = 0;
+
+            if (File.Exists(realtimePath))
+            {
+                foreach (string line in File.ReadAllLines(realtimePath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+
+                    if (parts.Length < 6)
+                        continue;
+
+                    string source = parts[1].Trim();
+                    string status = parts[5].Trim();
+
+                    if (source == "앱" && status == "접수 대기")
+                        waitingCount++;
+                }
+            }
+
+            UpdateNotice(waitingCount);
+        }
+
+        public void UpdateNotice(int waitingCount)
+        {
+            lblNotice.Text = $"신규 주문 [{waitingCount}건] 대기 중";
+            lblNotice.ForeColor = Color.Yellow;
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             isServerRunning = false;
@@ -924,20 +960,6 @@ namespace SushiKioskAdmin
                 Color activeColor = Color.FromArgb(0, 122, 204);
                 currentSelectedButton.BackColor = activeColor;
                 currentSelectedButton.FlatAppearance.MouseOverBackColor = activeColor;
-            }
-        }
-
-        public void UpdateNotice(int waitingCount)
-        {
-            if (waitingCount > 0)
-            {
-                lblNotice.Text = $"🔔 신규 주문 [{waitingCount}건] 대기 중!";
-                lblNotice.ForeColor = Color.Yellow;
-            }
-            else
-            {
-                lblNotice.Text = "✅ 모든 주문이 처리되었습니다.";
-                lblNotice.ForeColor = Color.LightGreen;
             }
         }
 

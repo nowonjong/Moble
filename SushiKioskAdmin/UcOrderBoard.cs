@@ -98,6 +98,9 @@ namespace SushiKioskAdmin.Views
             }
 
             ApplyCurrentFilter();
+
+            if (FindForm() is MainAdminForm mainForm)
+                mainForm.UpdateOrderNotice();
         }
 
         private string GetOrderItemsSummary(string identifier)
