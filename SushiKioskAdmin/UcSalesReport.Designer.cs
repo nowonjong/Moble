@@ -109,7 +109,7 @@
             // 
             // btnExportCsv
             // 
-            btnExportCsv.Location = new Point(570, 4);
+            btnExportCsv.Location = new Point(570, 6);
             btnExportCsv.Name = "btnExportCsv";
             btnExportCsv.Size = new Size(118, 34);
             btnExportCsv.TabIndex = 2;
@@ -136,28 +136,28 @@
             // lblTotalDiscount
             // 
             lblTotalDiscount.AutoSize = true;
-            lblTotalDiscount.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lblTotalDiscount.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
             lblTotalDiscount.ForeColor = Color.Red;
-            lblTotalDiscount.Location = new Point(463, 11);
+            lblTotalDiscount.Location = new Point(458, 12);
             lblTotalDiscount.Name = "lblTotalDiscount";
-            lblTotalDiscount.Size = new Size(41, 21);
+            lblTotalDiscount.Size = new Size(38, 20);
             lblTotalDiscount.TabIndex = 0;
             lblTotalDiscount.Text = "0 원";
             // 
             // lblTotalOrders
             // 
             lblTotalOrders.AutoSize = true;
-            lblTotalOrders.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lblTotalOrders.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
             lblTotalOrders.ForeColor = Color.DodgerBlue;
-            lblTotalOrders.Location = new Point(265, 11);
+            lblTotalOrders.Location = new Point(297, 12);
             lblTotalOrders.Name = "lblTotalOrders";
-            lblTotalOrders.Size = new Size(41, 21);
+            lblTotalOrders.Size = new Size(38, 20);
             lblTotalOrders.TabIndex = 0;
             lblTotalOrders.Text = "0 건";
             // 
             // btnExportPdf
             // 
-            btnExportPdf.Location = new Point(708, 4);
+            btnExportPdf.Location = new Point(708, 6);
             btnExportPdf.Name = "btnExportPdf";
             btnExportPdf.Size = new Size(118, 34);
             btnExportPdf.TabIndex = 2;
@@ -168,41 +168,41 @@
             // lblTotalSales
             // 
             lblTotalSales.AutoSize = true;
-            lblTotalSales.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lblTotalSales.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
             lblTotalSales.ForeColor = Color.DodgerBlue;
-            lblTotalSales.Location = new Point(111, 11);
+            lblTotalSales.Location = new Point(103, 12);
             lblTotalSales.Name = "lblTotalSales";
-            lblTotalSales.Size = new Size(41, 21);
+            lblTotalSales.Size = new Size(38, 20);
             lblTotalSales.TabIndex = 0;
             lblTotalSales.Text = "0 원";
             // 
             // label4
             // 
             label4.AutoSize = true;
-            label4.Font = new Font("맑은 고딕", 12F, FontStyle.Regular, GraphicsUnit.Point);
-            label4.Location = new Point(352, 11);
+            label4.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
+            label4.Location = new Point(359, 12);
             label4.Name = "label4";
-            label4.Size = new Size(112, 21);
+            label4.Size = new Size(103, 20);
             label4.TabIndex = 0;
             label4.Text = "할인된 금액 : ";
             // 
             // label3
             // 
             label3.AutoSize = true;
-            label3.Font = new Font("맑은 고딕", 12F, FontStyle.Regular, GraphicsUnit.Point);
-            label3.Location = new Point(185, 11);
+            label3.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
+            label3.Location = new Point(227, 12);
             label3.Name = "label3";
-            label3.Size = new Size(80, 21);
+            label3.Size = new Size(73, 20);
             label3.TabIndex = 0;
             label3.Text = "총 건수 : ";
             // 
             // label2
             // 
             label2.AutoSize = true;
-            label2.Font = new Font("맑은 고딕", 12F, FontStyle.Regular, GraphicsUnit.Point);
-            label2.Location = new Point(19, 11);
+            label2.Font = new Font("맑은 고딕", 11.25F, FontStyle.Bold, GraphicsUnit.Point);
+            label2.Location = new Point(19, 12);
             label2.Name = "label2";
-            label2.Size = new Size(96, 21);
+            label2.Size = new Size(88, 20);
             label2.TabIndex = 0;
             label2.Text = "총 매출액 : ";
             // 
