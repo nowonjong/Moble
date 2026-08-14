@@ -96,48 +96,6 @@ namespace SushiKioskAdmin.Views
             }
         }
 
-        private void SaveNewUserToCsv(string name, string phone, string address)
-        {
-            try
-            {
-                int newId = 1001;
-
-                if (userTable.Rows.Count > 0)
-                {
-                    int maxId = 1000;
-
-                    foreach (DataRow row in userTable.Rows)
-                    {
-                        if (row.RowState == DataRowState.Deleted)
-                            continue;
-
-                        int id = Convert.ToInt32(row["회원번호"]);
-
-                        if (id > maxId)
-                            maxId = id;
-                    }
-
-                    newId = maxId + 1;
-                }
-
-                string regDate = DateTime.Now.ToString("yyyy-MM-dd");
-                int point = 0;
-                string password = "";
-
-                userTable.Rows.Add(newId, name, phone, password, point, address, regDate);
-
-                string csvPath = Path.Combine(Application.StartupPath, "member.csv");
-                string csvLine = $"{newId},{name},{phone},{password},{point},{address},{regDate}";
-
-                File.AppendAllText(csvPath, csvLine + Environment.NewLine, new UTF8Encoding(false));
-                lastMemberModifiedTime = File.GetLastWriteTime(csvPath);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("회원 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
         private void SaveAllUsersToCsv()
         {
             try
@@ -187,23 +145,6 @@ namespace SushiKioskAdmin.Views
             userTable.DefaultView.RowFilter = "";
         }
 
-        private void btnAddUser_Click(object sender, EventArgs e)
-        {
-            string name = txtInputName.Text.Trim();
-            string phone = txtInputPhone.Text.Trim();
-            string address = txtInputAddress.Text.Trim();
-
-            if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(phone))
-            {
-                MessageBox.Show("회원명과 연락처를 입력해 주세요.", "안내", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            SaveNewUserToCsv(name, phone, address);
-            MessageBox.Show($"[{name}] 회원이 성공적으로 등록되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            ClearInputs();
-        }
-
         private void btnUpdateUser_Click(object sender, EventArgs e)
         {
             if (dgvUserList.SelectedRows.Count == 0)
@@ -224,11 +165,29 @@ namespace SushiKioskAdmin.Views
                     return;
                 }
 
+                foreach (DataRow row in userTable.Rows)
+                {
+                    if (row.RowState == DataRowState.Deleted)
+                        continue;
+
+                    if (row == rowView.Row)
+                        continue;
+
+                    string savedPhone = row["연락처"].ToString().Trim();
+
+                    if (savedPhone.Equals(phone, StringComparison.OrdinalIgnoreCase))
+                    {
+                        MessageBox.Show("이미 등록된 연락처입니다.", "안내", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+                }
+
                 rowView["회원명"] = name;
                 rowView["연락처"] = phone;
                 rowView["주소"] = address;
 
                 SaveAllUsersToCsv();
+
                 MessageBox.Show($"[{name}] 회원의 정보가 수정되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 ClearInputs();
             }
@@ -246,12 +205,18 @@ namespace SushiKioskAdmin.Views
             {
                 string name = rowView["회원명"].ToString();
 
-                DialogResult result = MessageBox.Show($"정말로 [{name}] 회원을 삭제하시겠습니까?", "회원 삭제 확인", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                DialogResult result = MessageBox.Show(
+                    $"정말로 [{name}] 회원을 삭제하시겠습니까?",
+                    "회원 삭제 확인",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning
+                );
 
                 if (result == DialogResult.Yes)
                 {
                     rowView.Row.Delete();
                     SaveAllUsersToCsv();
+
                     MessageBox.Show("회원 정보가 삭제되었습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     ClearInputs();
                 }
@@ -260,7 +225,8 @@ namespace SushiKioskAdmin.Views
 
         private void dgvUserList_SelectionChanged(object sender, EventArgs e)
         {
-            if (dgvUserList.SelectedRows.Count > 0 && dgvUserList.SelectedRows[0].DataBoundItem is DataRowView rowView)
+            if (dgvUserList.SelectedRows.Count > 0 &&
+                dgvUserList.SelectedRows[0].DataBoundItem is DataRowView rowView)
             {
                 txtInputName.Text = rowView["회원명"].ToString();
                 txtInputPhone.Text = rowView["연락처"].ToString();

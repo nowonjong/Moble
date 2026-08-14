@@ -37,7 +37,6 @@
             txtSearch = new TextBox();
             panel1 = new Panel();
             btnUpdateUser = new Button();
-            btnAddUser = new Button();
             txtInputAddress = new TextBox();
             txtInputPhone = new TextBox();
             txtInputName = new TextBox();
@@ -117,7 +116,6 @@
             // panel1
             // 
             panel1.Controls.Add(btnUpdateUser);
-            panel1.Controls.Add(btnAddUser);
             panel1.Controls.Add(txtInputAddress);
             panel1.Controls.Add(txtInputPhone);
             panel1.Controls.Add(txtInputName);
@@ -142,16 +140,6 @@
             btnUpdateUser.Text = "회원 정보 수정";
             btnUpdateUser.UseVisualStyleBackColor = true;
             btnUpdateUser.Click += btnUpdateUser_Click;
-            // 
-            // btnAddUser
-            // 
-            btnAddUser.Location = new Point(24, 197);
-            btnAddUser.Name = "btnAddUser";
-            btnAddUser.Size = new Size(105, 37);
-            btnAddUser.TabIndex = 3;
-            btnAddUser.Text = "회원 등록";
-            btnAddUser.UseVisualStyleBackColor = true;
-            btnAddUser.Click += btnAddUser_Click;
             // 
             // txtInputAddress
             // 
@@ -297,7 +285,6 @@
         private TextBox textBox1;
         private Button btnDeleteUser;
         private Button btnUpdateUser;
-        private Button btnAddUser;
         private TextBox txtInputAddress;
         private TextBox txtInputPhone;
         private TextBox txtInputName;

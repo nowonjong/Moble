@@ -8,6 +8,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -19,6 +20,9 @@ namespace SushiKioskAdmin
         private TcpListener server;
         private bool isServerRunning = false;
         private const int SERVER_PORT = 9000;
+        private const int MAX_MESSAGE_SIZE = 1024 * 1024;
+        private readonly object memberFileLock = new object();
+        private readonly object orderFileLock = new object();
 
         public MainAdminForm()
         {
@@ -70,6 +74,11 @@ namespace SushiKioskAdmin
                         Task.Run(() => HandleClientCommunication(client));
                     }
                 }
+                catch (SocketException ex)
+                {
+                    if (isServerRunning)
+                        System.Diagnostics.Debug.WriteLine($"[소켓 서버 오류] {ex.Message}");
+                }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[소켓 서버 오류] {ex.Message}");
@@ -81,14 +90,14 @@ namespace SushiKioskAdmin
         {
             try
             {
+                client.ReceiveTimeout = 10000;
+                client.SendTimeout = 10000;
                 using (NetworkStream stream = client.GetStream())
                 {
-                    byte[] buffer = new byte[4096];
-                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    if (bytesRead == 0)
+                    string jsonMessage = ReadJsonMessage(stream);
+                    if (string.IsNullOrWhiteSpace(jsonMessage))
                         return;
 
-                    string jsonMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
                     JObject packet = JObject.Parse(jsonMessage);
                     string action = packet["Action"]?.ToString();
                     string responseJson;
@@ -103,11 +112,20 @@ namespace SushiKioskAdmin
                         responseJson = ProcessAppReject(packet);
                     else if (action == "GET_ORDER_STATUS")
                         responseJson = ProcessGetOrderStatus(packet);
+                    else if (action == "REGISTER_MEMBER")
+                        responseJson = ProcessRegisterMember(packet);
+                    else if (action == "LOGIN_MEMBER")
+                        responseJson = ProcessLoginMember(packet);
+                    else if (action == "GET_MEMBER")
+                        responseJson = ProcessGetMember(packet);
+                    else if (action == "GET_MENU")
+                        responseJson = ProcessGetMenu();
                     else
                         responseJson = "{\"Status\":\"FAIL\",\"Message\":\"Unknown action.\"}";
 
                     byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
                     stream.Write(responseBytes, 0, responseBytes.Length);
+                    stream.Flush();
                 }
             }
             catch (Exception ex)
@@ -120,22 +138,73 @@ namespace SushiKioskAdmin
             }
         }
 
+        private string ReadJsonMessage(NetworkStream stream)
+        {
+            using (MemoryStream memoryStream = new MemoryStream())
+            {
+                byte[] buffer = new byte[4096];
+                while (memoryStream.Length < MAX_MESSAGE_SIZE)
+                {
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    if (bytesRead <= 0)
+                        break;
+
+                    memoryStream.Write(buffer, 0, bytesRead);
+                    string json = Encoding.UTF8.GetString(memoryStream.ToArray());
+
+                    try
+                    {
+                        JObject.Parse(json);
+                        return json;
+                    }
+                    catch (Newtonsoft.Json.JsonReaderException)
+                    {
+                    }
+                }
+
+                if (memoryStream.Length >= MAX_MESSAGE_SIZE)
+                    throw new InvalidOperationException("JSON message is too large.");
+
+                if (memoryStream.Length == 0)
+                    return null;
+
+                string finalJson = Encoding.UTF8.GetString(memoryStream.ToArray());
+                JObject.Parse(finalJson);
+                return finalJson;
+            }
+        }
+
         private string ProcessNewOrder(JObject packet)
         {
             try
             {
-                string identifier = packet["Identifier"]?.ToString();
-                string source = packet["Source"]?.ToString();
-                string orderType = packet["OrderType"]?.ToString();
-                string orderTime = packet["OrderTime"]?.ToString();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
+                string source = packet["Source"]?.ToString()?.Trim();
+                string orderType = packet["OrderType"]?.ToString()?.Trim();
+                string orderTime = packet["OrderTime"]?.ToString()?.Trim();
                 decimal totalAmount = packet["TotalAmount"]?.Value<decimal>() ?? 0;
-                string status = packet["Status"]?.ToString() ?? "접수 대기";
+                string status = packet["Status"]?.ToString()?.Trim() ?? "접수 대기";
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return "{\"Status\":\"FAIL\",\"Message\":\"Identifier is required.\"}";
 
+                if (string.IsNullOrWhiteSpace(source))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Source is required.\"}";
+
+                if (string.IsNullOrWhiteSpace(orderType))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"OrderType is required.\"}";
+
                 if (totalAmount < 0)
                     return "{\"Status\":\"FAIL\",\"Message\":\"Invalid order amount.\"}";
+
+                if (source == "키오스크" && orderType == "포장" && !IsValidKioskTakeoutIdentifier(identifier))
+                {
+                    return new JObject
+                    {
+                        ["Status"] = "FAIL",
+                        ["Message"] = "Kiosk takeout Identifier must use K-yyyyMMdd-nnn format."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
 
                 int memberId = 0;
                 int usedPoint = 0;
@@ -165,31 +234,44 @@ namespace SushiKioskAdmin
                     earnedPoint = memberId > 0 ? (int)(paidAmount * 0.01m) : 0;
                 }
 
-                string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
-                string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
-                string realtimeLine = $"{identifier},{source},{orderType},{orderTime},{totalAmount},{status}";
-                File.AppendAllLines(realtimePath, new[] { realtimeLine }, new UTF8Encoding(false));
-
-                JArray items = packet["Items"] as JArray;
-                if (items != null)
+                lock (orderFileLock)
                 {
-                    List<string> itemLines = new List<string>();
-                    foreach (var item in items)
+                    if (OrderIdentifierExists(identifier))
                     {
-                        string menuName = item["MenuName"]?.ToString();
-                        decimal price = item["Price"]?.Value<decimal>() ?? 0;
-                        int quantity = item["Quantity"]?.Value<int>() ?? 0;
-                        int discountQty = item["DiscountQty"]?.Value<int>() ?? 0;
-                        decimal subTotal = item["SubTotal"]?.Value<decimal>() ?? 0;
-                        itemLines.Add($"{identifier},{menuName},{price},{quantity},{discountQty},{subTotal}");
+                        return new JObject
+                        {
+                            ["Status"] = "FAIL",
+                            ["Identifier"] = identifier,
+                            ["Message"] = "Duplicate order identifier."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
                     }
 
-                    if (itemLines.Count > 0)
-                        File.AppendAllLines(itemsPath, itemLines, new UTF8Encoding(false));
-                }
+                    string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+                    string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+                    string realtimeLine = $"{identifier},{source},{orderType},{orderTime},{totalAmount},{status}";
+                    File.AppendAllLines(realtimePath, new[] { realtimeLine }, new UTF8Encoding(false));
 
-                if (source == "앱")
-                    SaveAppPayment(identifier, memberId, usedPoint, earnedPoint, paymentMethod);
+                    JArray items = packet["Items"] as JArray;
+                    if (items != null)
+                    {
+                        List<string> itemLines = new List<string>();
+                        foreach (var item in items)
+                        {
+                            string menuName = item["MenuName"]?.ToString();
+                            decimal price = item["Price"]?.Value<decimal>() ?? 0;
+                            int quantity = item["Quantity"]?.Value<int>() ?? 0;
+                            int discountQty = item["DiscountQty"]?.Value<int>() ?? 0;
+                            decimal subTotal = item["SubTotal"]?.Value<decimal>() ?? 0;
+                            itemLines.Add($"{identifier},{menuName},{price},{quantity},{discountQty},{subTotal}");
+                        }
+
+                        if (itemLines.Count > 0)
+                            File.AppendAllLines(itemsPath, itemLines, new UTF8Encoding(false));
+                    }
+
+                    if (source == "앱")
+                        SaveAppPayment(identifier, memberId, usedPoint, earnedPoint, paymentMethod);
+                }
 
                 UpdateOrderNotice();
                 return "{\"Status\":\"SUCCESS\",\"Message\":\"Order registered successfully.\"}";
@@ -201,11 +283,63 @@ namespace SushiKioskAdmin
             }
         }
 
+        private bool OrderIdentifierExists(string identifier)
+        {
+            string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            if (File.Exists(realtimePath))
+            {
+                foreach (string line in File.ReadAllLines(realtimePath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+                    if (parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            if (File.Exists(salesPath))
+            {
+                foreach (string line in File.ReadAllLines(salesPath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+                    if (parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            string rejectionPath = Path.Combine(Application.StartupPath, "susi_order_rejections.csv");
+            if (File.Exists(rejectionPath))
+            {
+                foreach (string line in File.ReadAllLines(rejectionPath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+                    if (parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool IsValidKioskTakeoutIdentifier(string identifier)
+        {
+            return Regex.IsMatch(identifier ?? "", @"^K-\d{8}-\d{3,}$", RegexOptions.IgnoreCase);
+        }
+
         private string ProcessPaymentComplete(JObject packet)
         {
             try
             {
-                string identifier = packet["Identifier"]?.ToString();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
                 string paymentMethod = packet["PaymentMethod"]?.ToString() ?? "신용카드";
                 int memberId = packet["MemberId"]?.Value<int>() ?? 0;
                 int usedPoint = packet["UsedPoint"]?.Value<int>() ?? 0;
@@ -226,7 +360,6 @@ namespace SushiKioskAdmin
                 if (memberId > 0)
                 {
                     int currentPoint = GetMemberPoint(memberId);
-
                     if (usedPoint > currentPoint)
                         return "{\"Status\":\"FAIL\",\"Message\":\"Not enough points.\"}";
 
@@ -238,20 +371,38 @@ namespace SushiKioskAdmin
                 }
 
                 string tablePrefix = GetTablePrefix(identifier);
-                string paymentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                string newReceiptNo = GenerateNewReceiptNumber();
-                string source = "키오스크";
-                string orderType = tablePrefix != null ? "매장" : "포장";
-                string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
-                string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+                string orderType;
 
-                string salesLine = $"{newReceiptNo},{paymentDate},{source},{orderType},{originalAmount},{usedPoint},{totalAmount},{earnedPoint},{memberId},{paymentMethod}";
-                File.AppendAllLines(salesPath, new[] { salesLine }, new UTF8Encoding(false));
+                if (tablePrefix != null)
+                {
+                    orderType = "매장";
+                }
+                else
+                {
+                    if (!GetRealtimeOrderInfo(identifier, out orderType, out decimal realtimeAmount))
+                        return "{\"Status\":\"FAIL\",\"Message\":\"Realtime order not found.\"}";
+
+                    if (orderType != "포장")
+                        return "{\"Status\":\"FAIL\",\"Message\":\"Invalid kiosk payment identifier.\"}";
+
+                    if (!IsValidKioskTakeoutIdentifier(identifier))
+                        return "{\"Status\":\"FAIL\",\"Message\":\"Invalid kiosk takeout identifier.\"}";
+                }
+
+                string paymentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                string newReceiptNo;
+
+                lock (orderFileLock)
+                {
+                    newReceiptNo = GenerateNewReceiptNumber();
+                    string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+                    string salesLine = $"{newReceiptNo},{paymentDate},키오스크,{orderType},{originalAmount},{usedPoint},{totalAmount},{earnedPoint},{memberId},{paymentMethod}";
+                    File.AppendAllLines(salesPath, new[] { salesLine }, new UTF8Encoding(false));
+                }
 
                 if (memberId > 0)
                 {
                     bool pointUpdated = UpdateMemberPoint(memberId, usedPoint, earnedPoint);
-
                     if (!pointUpdated)
                     {
                         RemoveSalesHistory(newReceiptNo);
@@ -259,34 +410,39 @@ namespace SushiKioskAdmin
                     }
                 }
 
-                if (File.Exists(realtimePath))
+                lock (orderFileLock)
                 {
-                    List<string> lines = File.ReadAllLines(realtimePath, Encoding.UTF8).ToList();
+                    string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+
+                    if (File.Exists(realtimePath))
+                    {
+                        List<string> lines = File.ReadAllLines(realtimePath, Encoding.UTF8).ToList();
+
+                        if (tablePrefix != null)
+                        {
+                            lines.RemoveAll(line =>
+                            {
+                                string[] parts = line.Split(',');
+                                return parts.Length > 0 && parts[0].Trim().StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase);
+                            });
+                        }
+                        else
+                        {
+                            lines.RemoveAll(line =>
+                            {
+                                string[] parts = line.Split(',');
+                                return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
+                            });
+                        }
+
+                        File.WriteAllLines(realtimePath, lines, new UTF8Encoding(false));
+                    }
 
                     if (tablePrefix != null)
-                    {
-                        lines.RemoveAll(line =>
-                        {
-                            string[] parts = line.Split(',');
-                            return parts.Length > 0 && parts[0].Trim().StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase);
-                        });
-                    }
+                        UpdateTableItemKeyIds(tablePrefix, newReceiptNo);
                     else
-                    {
-                        lines.RemoveAll(line =>
-                        {
-                            string[] parts = line.Split(',');
-                            return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
-                        });
-                    }
-
-                    File.WriteAllLines(realtimePath, lines, new UTF8Encoding(false));
+                        UpdateItemKeyId(identifier, newReceiptNo);
                 }
-
-                if (tablePrefix != null)
-                    UpdateTableItemKeyIds(tablePrefix, newReceiptNo);
-                else
-                    UpdateItemKeyId(identifier, newReceiptNo);
 
                 UpdateOrderNotice();
 
@@ -331,7 +487,6 @@ namespace SushiKioskAdmin
                 if (memberId > 0)
                 {
                     int currentPoint = GetMemberPoint(memberId);
-
                     if (usedPoint > currentPoint)
                         return "{\"Status\":\"FAIL\",\"Message\":\"Not enough points.\"}";
                 }
@@ -339,14 +494,16 @@ namespace SushiKioskAdmin
                 string paymentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 string receiptNo = identifier;
                 string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
-
                 string salesLine = $"{receiptNo},{paymentDate},앱,{orderType},{originalAmount},{usedPoint},{totalAmount},{earnedPoint},{memberId},{paymentMethod}";
-                File.AppendAllLines(salesPath, new[] { salesLine }, new UTF8Encoding(false));
+
+                lock (orderFileLock)
+                {
+                    File.AppendAllLines(salesPath, new[] { salesLine }, new UTF8Encoding(false));
+                }
 
                 if (memberId > 0)
                 {
                     bool pointUpdated = UpdateMemberPoint(memberId, usedPoint, earnedPoint);
-
                     if (!pointUpdated)
                     {
                         RemoveSalesHistory(receiptNo);
@@ -354,9 +511,13 @@ namespace SushiKioskAdmin
                     }
                 }
 
-                RemoveRealtimeOrder(identifier);
-                RemoveAppPayment(identifier);
-                UpdateItemKeyId(identifier, receiptNo);
+                lock (orderFileLock)
+                {
+                    RemoveRealtimeOrder(identifier);
+                    RemoveAppPayment(identifier);
+                    UpdateItemKeyId(identifier, receiptNo);
+                }
+
                 UpdateOrderNotice();
 
                 return new JObject
@@ -381,18 +542,32 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string identifier = packet["Identifier"]?.ToString();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return "{\"Status\":\"FAIL\",\"Message\":\"Identifier is required.\"}";
 
-                if (!GetRealtimeOrderInfo(identifier, out string orderType, out decimal totalAmount))
+                if (!GetRealtimeOrderInfo(identifier, out string orderType, out decimal originalAmount))
                     return "{\"Status\":\"FAIL\",\"Message\":\"Realtime order not found.\"}";
 
-                SaveRejectedOrder(identifier, orderType);
-                RemoveRealtimeOrder(identifier);
-                RemoveAppPayment(identifier);
-                RemoveOrderItems(identifier);
+                int memberId = 0;
+                int usedPoint = 0;
+                int earnedPoint = 0;
+                string paymentMethod = "앱선결제";
+                GetAppPayment(identifier, out memberId, out usedPoint, out earnedPoint, out paymentMethod);
+
+                decimal refundAmount = originalAmount - usedPoint;
+                if (refundAmount < 0)
+                    refundAmount = 0;
+
+                lock (orderFileLock)
+                {
+                    SaveRejectedOrder(identifier, orderType);
+                    RemoveRealtimeOrder(identifier);
+                    RemoveAppPayment(identifier);
+                    RemoveOrderItems(identifier);
+                }
+
                 UpdateOrderNotice();
 
                 return new JObject
@@ -400,7 +575,10 @@ namespace SushiKioskAdmin
                     ["Status"] = "SUCCESS",
                     ["Identifier"] = identifier,
                     ["OrderStatus"] = "주문 거절",
-                    ["Message"] = "App order rejected."
+                    ["RefundRequired"] = true,
+                    ["RefundAmount"] = refundAmount,
+                    ["PaymentMethod"] = paymentMethod,
+                    ["Message"] = "App order rejected. Prepayment cancellation is required."
                 }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
@@ -435,7 +613,6 @@ namespace SushiKioskAdmin
                             continue;
 
                         string[] parts = line.Split(',');
-
                         if (parts.Length < 6)
                             continue;
 
@@ -461,7 +638,6 @@ namespace SushiKioskAdmin
                             continue;
 
                         string[] parts = line.Split(',');
-
                         if (parts.Length < 10)
                             continue;
 
@@ -487,7 +663,6 @@ namespace SushiKioskAdmin
                             continue;
 
                         string[] parts = line.Split(',');
-
                         if (parts.Length < 4)
                             continue;
 
@@ -497,7 +672,9 @@ namespace SushiKioskAdmin
                             {
                                 ["Status"] = "SUCCESS",
                                 ["Identifier"] = identifier,
-                                ["OrderStatus"] = "주문 거절"
+                                ["OrderStatus"] = "주문 거절",
+                                ["RefundRequired"] = true,
+                                ["Message"] = "Order rejected. Check prepayment cancellation."
                             }.ToString(Newtonsoft.Json.Formatting.None);
                         }
                     }
@@ -520,6 +697,332 @@ namespace SushiKioskAdmin
                     ["Message"] = "Failed to get order status."
                 }.ToString(Newtonsoft.Json.Formatting.None);
             }
+        }
+
+        private string ProcessRegisterMember(JObject packet)
+        {
+            try
+            {
+                string memberName = packet["MemberName"]?.ToString()?.Trim();
+                string phone = packet["Phone"]?.ToString()?.Trim();
+                string password = packet["Password"]?.ToString()?.Trim();
+                string address = packet["Address"]?.ToString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(memberName))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"MemberName is required.\"}";
+
+                if (string.IsNullOrWhiteSpace(phone))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Phone is required.\"}";
+
+                if (string.IsNullOrWhiteSpace(password))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Password is required.\"}";
+
+                if (string.IsNullOrWhiteSpace(address))
+                    address = "";
+
+                if (memberName.Contains(",") || phone.Contains(",") || password.Contains(",") || address.Contains(","))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Comma cannot be used in member information.\"}";
+
+                lock (memberFileLock)
+                {
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
+                    if (!File.Exists(memberPath))
+                        File.WriteAllText(memberPath, "", new UTF8Encoding(false));
+
+                    string[] lines = File.ReadAllLines(memberPath, Encoding.UTF8);
+
+                    foreach (string line in lines)
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+                        if (parts.Length < 7)
+                            continue;
+
+                        string savedPhone = parts[2].Trim();
+
+                        if (savedPhone.Equals(phone, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new JObject
+                            {
+                                ["Status"] = "FAIL",
+                                ["Message"] = "Phone number already registered."
+                            }.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+
+                    int memberId = GenerateNextMemberId(lines);
+                    int point = 0;
+                    string joinDate = DateTime.Now.ToString("yyyy-MM-dd");
+                    string memberLine = $"{memberId},{memberName},{phone},{password},{point},{address},{joinDate}";
+
+                    File.AppendAllLines(memberPath, new[] { memberLine }, new UTF8Encoding(false));
+
+                    return new JObject
+                    {
+                        ["Status"] = "SUCCESS",
+                        ["MemberId"] = memberId,
+                        ["Point"] = point,
+                        ["JoinDate"] = joinDate,
+                        ["Message"] = "Member registered successfully."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[회원가입 처리 오류] {ex.Message}");
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Member registration failed."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+        }
+
+        private string ProcessLoginMember(JObject packet)
+        {
+            try
+            {
+                string phone = packet["Phone"]?.ToString()?.Trim();
+                string password = packet["Password"]?.ToString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(phone))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Phone is required.\"}";
+
+                if (string.IsNullOrWhiteSpace(password))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Password is required.\"}";
+
+                lock (memberFileLock)
+                {
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
+                    if (!File.Exists(memberPath))
+                    {
+                        return new JObject
+                        {
+                            ["Status"] = "FAIL",
+                            ["Message"] = "Member data not found."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+
+                    foreach (string line in File.ReadAllLines(memberPath, Encoding.UTF8))
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+                        if (parts.Length < 7)
+                            continue;
+
+                        string savedPhone = parts[2].Trim();
+                        string savedPassword = parts[3].Trim();
+
+                        if (!savedPhone.Equals(phone, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        if (savedPassword != password)
+                        {
+                            return new JObject
+                            {
+                                ["Status"] = "FAIL",
+                                ["Message"] = "Invalid phone or password."
+                            }.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+
+                        int.TryParse(parts[0].Trim(), out int memberId);
+                        int.TryParse(parts[4].Trim(), out int point);
+
+                        return new JObject
+                        {
+                            ["Status"] = "SUCCESS",
+                            ["MemberId"] = memberId,
+                            ["MemberName"] = parts[1].Trim(),
+                            ["Phone"] = savedPhone,
+                            ["Point"] = point,
+                            ["Address"] = parts[5].Trim(),
+                            ["JoinDate"] = parts[6].Trim(),
+                            ["Message"] = "Login successful."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+                }
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Invalid phone or password."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[로그인 처리 오류] {ex.Message}");
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Login failed."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+        }
+
+        private string ProcessGetMember(JObject packet)
+        {
+            try
+            {
+                string phone = packet["Phone"]?.ToString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(phone))
+                {
+                    return new JObject
+                    {
+                        ["Status"] = "FAIL",
+                        ["Message"] = "Phone is required."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+
+                lock (memberFileLock)
+                {
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
+                    if (!File.Exists(memberPath))
+                    {
+                        return new JObject
+                        {
+                            ["Status"] = "FAIL",
+                            ["Message"] = "Member data not found."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+
+                    foreach (string line in File.ReadAllLines(memberPath, Encoding.UTF8))
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+                        if (parts.Length < 7)
+                            continue;
+
+                        string savedPhone = parts[2].Trim();
+
+                        if (!savedPhone.Equals(phone, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        int.TryParse(parts[0].Trim(), out int memberId);
+                        int.TryParse(parts[4].Trim(), out int point);
+
+                        return new JObject
+                        {
+                            ["Status"] = "SUCCESS",
+                            ["MemberId"] = memberId,
+                            ["MemberName"] = parts[1].Trim(),
+                            ["Phone"] = savedPhone,
+                            ["Point"] = point,
+                            ["Message"] = "Member found."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+                }
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Member not found."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[회원 조회 오류] {ex.Message}");
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Failed to get member information."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+        }
+
+        private string ProcessGetMenu()
+        {
+            try
+            {
+                string menuPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
+
+                if (!File.Exists(menuPath))
+                {
+                    return new JObject
+                    {
+                        ["Status"] = "FAIL",
+                        ["Message"] = "Menu data not found."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+
+                JArray menuArray = new JArray();
+
+                foreach (string line in File.ReadAllLines(menuPath, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+                    if (parts.Length < 7)
+                        continue;
+
+                    if (!int.TryParse(parts[0].Trim(), out int menuId))
+                        continue;
+
+                    int.TryParse(parts[4].Trim(), out int price);
+
+                    JObject menu = new JObject
+                    {
+                        ["MenuId"] = menuId,
+                        ["KoreanName"] = parts[1].Trim(),
+                        ["JapaneseName"] = parts[2].Trim(),
+                        ["EnglishName"] = parts[3].Trim(),
+                        ["Price"] = price,
+                        ["SaleStatus"] = parts[5].Trim(),
+                        ["ImageFile"] = parts[6].Trim()
+                    };
+
+                    menuArray.Add(menu);
+                }
+
+                return new JObject
+                {
+                    ["Status"] = "SUCCESS",
+                    ["Menus"] = menuArray
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[메뉴 조회 오류] {ex.Message}");
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Failed to get menu information."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+        }
+
+        private int GenerateNextMemberId(string[] lines)
+        {
+            int maxMemberId = 1000;
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] parts = line.Split(',');
+                if (parts.Length < 1)
+                    continue;
+
+                if (int.TryParse(parts[0].Trim(), out int memberId) && memberId > maxMemberId)
+                    maxMemberId = memberId;
+            }
+
+            return maxMemberId + 1;
         }
 
         private void SaveRejectedOrder(string identifier, string orderType)
@@ -555,7 +1058,6 @@ namespace SushiKioskAdmin
                     continue;
 
                 string[] parts = line.Split(',');
-
                 if (parts.Length < 5)
                     continue;
 
@@ -566,7 +1068,6 @@ namespace SushiKioskAdmin
                 int.TryParse(parts[2].Trim(), out usedPoint);
                 int.TryParse(parts[3].Trim(), out earnedPoint);
                 paymentMethod = parts[4].Trim();
-
                 return true;
             }
 
@@ -625,7 +1126,6 @@ namespace SushiKioskAdmin
                     continue;
 
                 string[] parts = line.Split(',');
-
                 if (parts.Length < 6)
                     continue;
 
@@ -634,7 +1134,6 @@ namespace SushiKioskAdmin
 
                 orderType = parts[2].Trim();
                 decimal.TryParse(parts[4].Trim(), out totalAmount);
-
                 return true;
             }
 
@@ -664,15 +1163,12 @@ namespace SushiKioskAdmin
             if (string.IsNullOrWhiteSpace(identifier))
                 return null;
 
-            if (!identifier.StartsWith("T", StringComparison.OrdinalIgnoreCase))
+            Match match = Regex.Match(identifier, @"^(T\d{2})(?:-\d+)?$", RegexOptions.IgnoreCase);
+
+            if (!match.Success)
                 return null;
 
-            int dashIndex = identifier.IndexOf('-');
-
-            if (dashIndex >= 0)
-                return identifier.Substring(0, dashIndex) + "-";
-
-            return identifier + "-";
+            return match.Groups[1].Value.ToUpper() + "-";
         }
 
         private void UpdateTableItemKeyIds(string tablePrefix, string newReceiptNo)
@@ -731,20 +1227,23 @@ namespace SushiKioskAdmin
 
         private void RemoveSalesHistory(string receiptNo)
         {
-            string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
-
-            if (!File.Exists(salesPath))
-                return;
-
-            List<string> lines = File.ReadAllLines(salesPath, Encoding.UTF8).ToList();
-
-            lines.RemoveAll(line =>
+            lock (orderFileLock)
             {
-                string[] parts = line.Split(',');
-                return parts.Length > 0 && parts[0].Trim().Equals(receiptNo, StringComparison.OrdinalIgnoreCase);
-            });
+                string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
 
-            File.WriteAllLines(salesPath, lines, new UTF8Encoding(false));
+                if (!File.Exists(salesPath))
+                    return;
+
+                List<string> lines = File.ReadAllLines(salesPath, Encoding.UTF8).ToList();
+
+                lines.RemoveAll(line =>
+                {
+                    string[] parts = line.Split(',');
+                    return parts.Length > 0 && parts[0].Trim().Equals(receiptNo, StringComparison.OrdinalIgnoreCase);
+                });
+
+                File.WriteAllLines(salesPath, lines, new UTF8Encoding(false));
+            }
         }
 
         private string GenerateNewReceiptNumber()
@@ -762,7 +1261,6 @@ namespace SushiKioskAdmin
                         continue;
 
                     string[] columns = line.Split(',');
-
                     if (columns.Length < 1)
                         continue;
 
@@ -783,72 +1281,76 @@ namespace SushiKioskAdmin
 
         private int GetMemberPoint(int memberId)
         {
-            string csvPath = Path.Combine(Application.StartupPath, "member.csv");
-
-            if (!File.Exists(csvPath))
-                return 0;
-
-            foreach (string line in File.ReadAllLines(csvPath, Encoding.UTF8))
+            lock (memberFileLock)
             {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
+                string csvPath = Path.Combine(Application.StartupPath, "member.csv");
 
-                string[] parts = line.Split(',');
+                if (!File.Exists(csvPath))
+                    return 0;
 
-                if (parts.Length < 7)
-                    continue;
-
-                if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                foreach (string line in File.ReadAllLines(csvPath, Encoding.UTF8))
                 {
-                    if (int.TryParse(parts[4].Trim(), out int point))
-                        return point;
-                }
-            }
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
 
-            return 0;
+                    string[] parts = line.Split(',');
+                    if (parts.Length < 7)
+                        continue;
+
+                    if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                    {
+                        if (int.TryParse(parts[4].Trim(), out int point))
+                            return point;
+                    }
+                }
+
+                return 0;
+            }
         }
 
         private bool UpdateMemberPoint(int memberId, int usedPoint, int earnedPoint)
         {
-            string csvPath = Path.Combine(Application.StartupPath, "member.csv");
-
-            if (!File.Exists(csvPath))
-                return false;
-
-            string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
-            bool found = false;
-
-            for (int i = 0; i < lines.Length; i++)
+            lock (memberFileLock)
             {
-                if (string.IsNullOrWhiteSpace(lines[i]))
-                    continue;
+                string csvPath = Path.Combine(Application.StartupPath, "member.csv");
 
-                string[] parts = lines[i].Split(',');
+                if (!File.Exists(csvPath))
+                    return false;
 
-                if (parts.Length < 7)
-                    continue;
+                string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
+                bool found = false;
 
-                if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    int currentPoint = int.TryParse(parts[4].Trim(), out int point) ? point : 0;
+                    if (string.IsNullOrWhiteSpace(lines[i]))
+                        continue;
 
-                    if (usedPoint < 0 || usedPoint > currentPoint)
-                        return false;
+                    string[] parts = lines[i].Split(',');
 
-                    int newPoint = currentPoint - usedPoint + earnedPoint;
-                    parts[4] = newPoint.ToString();
-                    lines[i] = string.Join(",", parts);
-                    found = true;
-                    break;
+                    if (parts.Length < 7)
+                        continue;
+
+                    if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                    {
+                        int currentPoint = int.TryParse(parts[4].Trim(), out int point) ? point : 0;
+
+                        if (usedPoint < 0 || usedPoint > currentPoint)
+                            return false;
+
+                        int newPoint = currentPoint - usedPoint + earnedPoint;
+                        parts[4] = newPoint.ToString();
+                        lines[i] = string.Join(",", parts);
+                        found = true;
+                        break;
+                    }
                 }
+
+                if (!found)
+                    return false;
+
+                File.WriteAllLines(csvPath, lines, new UTF8Encoding(false));
+                return true;
             }
-
-            if (!found)
-                return false;
-
-            File.WriteAllLines(csvPath, lines, new UTF8Encoding(false));
-
-            return true;
         }
 
         public string CompleteAppOrder(string identifier)
