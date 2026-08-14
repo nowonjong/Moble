@@ -169,36 +169,6 @@ namespace SushiKioskAdmin.Views
             lastOrdersModifiedTime = File.GetLastWriteTime(ordersPath);
         }
 
-        private void RemoveRejectedAppOrder(string identifier)
-        {
-            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
-            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
-            string paymentPath = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
-
-            RemoveCsvRowsByKey(ordersPath, identifier);
-            RemoveCsvRowsByKey(itemsPath, identifier);
-            RemoveCsvRowsByKey(paymentPath, identifier);
-        }
-
-        private void RemoveCsvRowsByKey(string path, string identifier)
-        {
-            if (!File.Exists(path))
-                return;
-
-            List<string> lines = new List<string>(File.ReadAllLines(path, Encoding.UTF8));
-
-            lines.RemoveAll(line =>
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                    return false;
-
-                string[] parts = line.Split(',');
-                return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
-            });
-
-            File.WriteAllLines(path, lines, new UTF8Encoding(false));
-        }
-
         private void FilterOrders_CheckedChanged(object sender, EventArgs e)
         {
             if (sender is RadioButton rdo && rdo.Checked)
@@ -295,10 +265,37 @@ namespace SushiKioskAdmin.Views
                 if (result != DialogResult.Yes)
                     return;
 
-                RemoveRejectedAppOrder(identifier);
-                LoadOrdersFromCsv();
+                MainAdminForm mainForm = FindForm() as MainAdminForm;
 
-                MessageBox.Show("앱 주문이 거절되었습니다.", "알림");
+                if (mainForm == null)
+                {
+                    MessageBox.Show("메인 관리자 폼을 찾을 수 없습니다.", "오류");
+                    return;
+                }
+
+                string responseJson = mainForm.RejectAppOrder(identifier);
+
+                try
+                {
+                    JObject response = JObject.Parse(responseJson);
+                    string status = response["Status"]?.ToString();
+                    string message = response["Message"]?.ToString();
+
+                    if (status == "SUCCESS")
+                    {
+                        LoadOrdersFromCsv();
+                        MessageBox.Show("앱 주문이 거절되었습니다.", "알림");
+                    }
+                    else
+                    {
+                        MessageBox.Show($"주문 거절 처리에 실패했습니다.\n{message}", "오류");
+                    }
+                }
+                catch
+                {
+                    MessageBox.Show("주문 거절 처리 응답을 확인할 수 없습니다.", "오류");
+                }
+
                 return;
             }
 
@@ -340,6 +337,8 @@ namespace SushiKioskAdmin.Views
                 {
                     MessageBox.Show("픽업 완료 처리 응답을 확인할 수 없습니다.", "오류");
                 }
+
+                return;
             }
         }
 

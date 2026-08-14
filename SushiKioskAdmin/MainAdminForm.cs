@@ -102,6 +102,10 @@ namespace SushiKioskAdmin
                         responseJson = ProcessPaymentComplete(packet);
                     else if (action == "APP_PICKUP_COMPLETE")
                         responseJson = ProcessAppPickupComplete(packet);
+                    else if (action == "APP_REJECT_ORDER")
+                        responseJson = ProcessAppReject(packet);
+                    else if (action == "GET_ORDER_STATUS")
+                        responseJson = ProcessGetOrderStatus(packet);
                     else
                         responseJson = "{\"Status\":\"FAIL\",\"Message\":\"Unknown action.\"}";
 
@@ -133,6 +137,38 @@ namespace SushiKioskAdmin
                 if (string.IsNullOrWhiteSpace(identifier))
                     return "{\"Status\":\"FAIL\",\"Message\":\"Identifier is required.\"}";
 
+                if (totalAmount < 0)
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Invalid order amount.\"}";
+
+                int memberId = 0;
+                int usedPoint = 0;
+                int earnedPoint = 0;
+                string paymentMethod = "앱선결제";
+
+                if (source == "앱")
+                {
+                    memberId = packet["MemberId"]?.Value<int>() ?? 0;
+                    usedPoint = packet["UsedPoint"]?.Value<int>() ?? 0;
+                    paymentMethod = packet["PaymentMethod"]?.ToString() ?? "앱선결제";
+
+                    if (usedPoint < 0 || usedPoint > totalAmount)
+                        return "{\"Status\":\"FAIL\",\"Message\":\"Invalid point usage.\"}";
+
+                    if (memberId == 0 && usedPoint > 0)
+                        return "{\"Status\":\"FAIL\",\"Message\":\"Non-members cannot use points.\"}";
+
+                    if (memberId > 0)
+                    {
+                        int currentPoint = GetMemberPoint(memberId);
+
+                        if (usedPoint > currentPoint)
+                            return "{\"Status\":\"FAIL\",\"Message\":\"Not enough points.\"}";
+                    }
+
+                    decimal paidAmount = totalAmount - usedPoint;
+                    earnedPoint = memberId > 0 ? (int)(paidAmount * 0.01m) : 0;
+                }
+
                 string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
                 string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
 
@@ -161,30 +197,7 @@ namespace SushiKioskAdmin
                 }
 
                 if (source == "앱")
-                {
-                    int memberId = packet["MemberId"]?.Value<int>() ?? 0;
-                    int usedPoint = packet["UsedPoint"]?.Value<int>() ?? 0;
-                    string paymentMethod = packet["PaymentMethod"]?.ToString() ?? "앱선결제";
-
-                    if (usedPoint < 0 || usedPoint > totalAmount)
-                        return "{\"Status\":\"FAIL\",\"Message\":\"Invalid point usage.\"}";
-
-                    if (memberId == 0 && usedPoint > 0)
-                        return "{\"Status\":\"FAIL\",\"Message\":\"Non-members cannot use points.\"}";
-
-                    if (memberId > 0)
-                    {
-                        int currentPoint = GetMemberPoint(memberId);
-
-                        if (usedPoint > currentPoint)
-                            return "{\"Status\":\"FAIL\",\"Message\":\"Not enough points.\"}";
-                    }
-
-                    decimal paidAmount = totalAmount - usedPoint;
-                    int earnedPoint = memberId > 0 ? (int)(paidAmount * 0.01m) : 0;
-
                     SaveAppPayment(identifier, memberId, usedPoint, earnedPoint, paymentMethod);
-                }
 
                 return "{\"Status\":\"SUCCESS\",\"Message\":\"Order registered successfully.\"}";
             }
@@ -283,7 +296,16 @@ namespace SushiKioskAdmin
                 else
                     UpdateItemKeyId(identifier, newReceiptNo);
 
-                return $"{{\"Status\":\"SUCCESS\",\"ReceiptNo\":\"{newReceiptNo}\",\"OriginalAmount\":{originalAmount},\"UsedPoint\":{usedPoint},\"TotalAmount\":{totalAmount},\"EarnedPoint\":{earnedPoint},\"Message\":\"Payment processed successfully.\"}}";
+                return new JObject
+                {
+                    ["Status"] = "SUCCESS",
+                    ["ReceiptNo"] = newReceiptNo,
+                    ["OriginalAmount"] = originalAmount,
+                    ["UsedPoint"] = usedPoint,
+                    ["TotalAmount"] = totalAmount,
+                    ["EarnedPoint"] = earnedPoint,
+                    ["Message"] = "Payment processed successfully."
+                }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
@@ -342,13 +364,174 @@ namespace SushiKioskAdmin
                 RemoveAppPayment(identifier);
                 UpdateItemKeyId(identifier, receiptNo);
 
-                return $"{{\"Status\":\"SUCCESS\",\"ReceiptNo\":\"{receiptNo}\",\"OriginalAmount\":{originalAmount},\"UsedPoint\":{usedPoint},\"TotalAmount\":{totalAmount},\"EarnedPoint\":{earnedPoint},\"Message\":\"App order pickup completed.\"}}";
+                return new JObject
+                {
+                    ["Status"] = "SUCCESS",
+                    ["ReceiptNo"] = receiptNo,
+                    ["OriginalAmount"] = originalAmount,
+                    ["UsedPoint"] = usedPoint,
+                    ["TotalAmount"] = totalAmount,
+                    ["EarnedPoint"] = earnedPoint,
+                    ["Message"] = "App order pickup completed."
+                }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[앱 주문 완료 오류] {ex.Message}");
                 return "{\"Status\":\"FAIL\",\"Message\":\"App pickup processing failed.\"}";
             }
+        }
+
+        private string ProcessAppReject(JObject packet)
+        {
+            try
+            {
+                string identifier = packet["Identifier"]?.ToString();
+
+                if (string.IsNullOrWhiteSpace(identifier))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Identifier is required.\"}";
+
+                if (!GetRealtimeOrderInfo(identifier, out string orderType, out decimal totalAmount))
+                    return "{\"Status\":\"FAIL\",\"Message\":\"Realtime order not found.\"}";
+
+                SaveRejectedOrder(identifier, orderType);
+                RemoveRealtimeOrder(identifier);
+                RemoveAppPayment(identifier);
+                RemoveOrderItems(identifier);
+
+                return new JObject
+                {
+                    ["Status"] = "SUCCESS",
+                    ["Identifier"] = identifier,
+                    ["OrderStatus"] = "주문 거절",
+                    ["Message"] = "App order rejected."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[앱 주문 거절 오류] {ex.Message}");
+                return "{\"Status\":\"FAIL\",\"Message\":\"App order rejection failed.\"}";
+            }
+        }
+
+        private string ProcessGetOrderStatus(JObject packet)
+        {
+            try
+            {
+                string identifier = packet["Identifier"]?.ToString();
+
+                if (string.IsNullOrWhiteSpace(identifier))
+                {
+                    return new JObject
+                    {
+                        ["Status"] = "FAIL",
+                        ["Message"] = "Identifier is required."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+
+                string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+
+                if (File.Exists(realtimePath))
+                {
+                    foreach (string line in File.ReadAllLines(realtimePath, Encoding.UTF8))
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+
+                        if (parts.Length < 6)
+                            continue;
+
+                        if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new JObject
+                            {
+                                ["Status"] = "SUCCESS",
+                                ["Identifier"] = identifier,
+                                ["OrderStatus"] = parts[5].Trim()
+                            }.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+                }
+
+                string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+
+                if (File.Exists(salesPath))
+                {
+                    foreach (string line in File.ReadAllLines(salesPath, Encoding.UTF8))
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+
+                        if (parts.Length < 10)
+                            continue;
+
+                        if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new JObject
+                            {
+                                ["Status"] = "SUCCESS",
+                                ["Identifier"] = identifier,
+                                ["OrderStatus"] = "픽업 완료"
+                            }.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+                }
+
+                string rejectionPath = Path.Combine(Application.StartupPath, "susi_order_rejections.csv");
+
+                if (File.Exists(rejectionPath))
+                {
+                    foreach (string line in File.ReadAllLines(rejectionPath, Encoding.UTF8))
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        string[] parts = line.Split(',');
+
+                        if (parts.Length < 4)
+                            continue;
+
+                        if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return new JObject
+                            {
+                                ["Status"] = "SUCCESS",
+                                ["Identifier"] = identifier,
+                                ["OrderStatus"] = "주문 거절"
+                            }.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                    }
+                }
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Identifier"] = identifier,
+                    ["Message"] = "Order not found."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[주문 상태 조회 오류] {ex.Message}");
+
+                return new JObject
+                {
+                    ["Status"] = "FAIL",
+                    ["Message"] = "Failed to get order status."
+                }.ToString(Newtonsoft.Json.Formatting.None);
+            }
+        }
+
+        private void SaveRejectedOrder(string identifier, string orderType)
+        {
+            string rejectionPath = Path.Combine(Application.StartupPath, "susi_order_rejections.csv");
+            string rejectDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            string line = $"{identifier},{rejectDate},앱,{orderType}";
+            File.AppendAllLines(rejectionPath, new[] { line }, new UTF8Encoding(false));
         }
 
         private void SaveAppPayment(string identifier, int memberId, int usedPoint, int earnedPoint, string paymentMethod)
@@ -387,6 +570,7 @@ namespace SushiKioskAdmin
                 int.TryParse(parts[2].Trim(), out usedPoint);
                 int.TryParse(parts[3].Trim(), out earnedPoint);
                 paymentMethod = parts[4].Trim();
+
                 return true;
             }
 
@@ -409,6 +593,24 @@ namespace SushiKioskAdmin
             });
 
             File.WriteAllLines(paymentPath, lines, new UTF8Encoding(false));
+        }
+
+        private void RemoveOrderItems(string identifier)
+        {
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            if (!File.Exists(itemsPath))
+                return;
+
+            List<string> lines = File.ReadAllLines(itemsPath, Encoding.UTF8).ToList();
+
+            lines.RemoveAll(line =>
+            {
+                string[] parts = line.Split(',');
+                return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
+            });
+
+            File.WriteAllLines(itemsPath, lines, new UTF8Encoding(false));
         }
 
         private bool GetRealtimeOrderInfo(string identifier, out string orderType, out decimal totalAmount)
@@ -436,6 +638,7 @@ namespace SushiKioskAdmin
 
                 orderType = parts[2].Trim();
                 decimal.TryParse(parts[4].Trim(), out totalAmount);
+
                 return true;
             }
 
@@ -557,9 +760,7 @@ namespace SushiKioskAdmin
 
             if (File.Exists(salesPath))
             {
-                string[] lines = File.ReadAllLines(salesPath, Encoding.UTF8);
-
-                foreach (string line in lines)
+                foreach (string line in File.ReadAllLines(salesPath, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
@@ -591,9 +792,7 @@ namespace SushiKioskAdmin
             if (!File.Exists(csvPath))
                 return 0;
 
-            string[] lines = File.ReadAllLines(csvPath, Encoding.UTF8);
-
-            foreach (string line in lines)
+            foreach (string line in File.ReadAllLines(csvPath, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
@@ -652,7 +851,46 @@ namespace SushiKioskAdmin
                 return false;
 
             File.WriteAllLines(csvPath, lines, new UTF8Encoding(false));
+
             return true;
+        }
+
+        public string CompleteAppOrder(string identifier)
+        {
+            JObject packet = new JObject
+            {
+                ["Action"] = "APP_PICKUP_COMPLETE",
+                ["Identifier"] = identifier
+            };
+
+            return ProcessAppPickupComplete(packet);
+        }
+
+        public string RejectAppOrder(string identifier)
+        {
+            JObject packet = new JObject
+            {
+                ["Action"] = "APP_REJECT_ORDER",
+                ["Identifier"] = identifier
+            };
+
+            return ProcessAppReject(packet);
+        }
+
+        public string CompleteKioskPayment(string identifier, int memberId, decimal originalAmount, int usedPoint, decimal totalAmount, string paymentMethod)
+        {
+            JObject packet = new JObject
+            {
+                ["Action"] = "PAYMENT_COMPLETE",
+                ["Identifier"] = identifier,
+                ["MemberId"] = memberId,
+                ["OriginalAmount"] = originalAmount,
+                ["UsedPoint"] = usedPoint,
+                ["TotalAmount"] = totalAmount,
+                ["PaymentMethod"] = paymentMethod
+            };
+
+            return ProcessPaymentComplete(packet);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -701,33 +939,6 @@ namespace SushiKioskAdmin
                 lblNotice.Text = "✅ 모든 주문이 처리되었습니다.";
                 lblNotice.ForeColor = Color.LightGreen;
             }
-        }
-
-        public string CompleteAppOrder(string identifier)
-        {
-            JObject packet = new JObject
-            {
-                ["Action"] = "APP_PICKUP_COMPLETE",
-                ["Identifier"] = identifier
-            };
-
-            return ProcessAppPickupComplete(packet);
-        }
-
-        public string CompleteKioskPayment(string identifier, int memberId, decimal originalAmount, int usedPoint, decimal totalAmount, string paymentMethod)
-        {
-            JObject packet = new JObject
-            {
-                ["Action"] = "PAYMENT_COMPLETE",
-                ["Identifier"] = identifier,
-                ["MemberId"] = memberId,
-                ["OriginalAmount"] = originalAmount,
-                ["UsedPoint"] = usedPoint,
-                ["TotalAmount"] = totalAmount,
-                ["PaymentMethod"] = paymentMethod
-            };
-
-            return ProcessPaymentComplete(packet);
         }
 
         private void btnNavOrder_Click(object sender, EventArgs e) => ShowView(new UcOrderBoard(), (Button)sender);
