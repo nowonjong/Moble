@@ -24,7 +24,7 @@ namespace SushiKioskAdmin.Views
             flpTables.Controls.Clear();
             Dictionary<string, int> tableAmounts = GetTableAmountsFromCsv();
 
-            int totalTables = 34;
+            int totalTables = 10;
             int occupiedTables = 0;
 
             for (int i = 1; i <= totalTables; i++)
