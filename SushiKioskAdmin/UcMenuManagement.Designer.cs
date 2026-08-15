@@ -28,9 +28,8 @@
         /// </summary>
         private void InitializeComponent()
         {
-            DataGridViewCellStyle dataGridViewCellStyle2 = new DataGridViewCellStyle();
+            DataGridViewCellStyle dataGridViewCellStyle1 = new DataGridViewCellStyle();
             pnlLeft = new Panel();
-            btnBrowseImage = new Button();
             picMenuImage = new PictureBox();
             btnUpdate = new Button();
             btnAdd = new Button();
@@ -56,7 +55,6 @@
             // 
             // pnlLeft
             // 
-            pnlLeft.Controls.Add(btnBrowseImage);
             pnlLeft.Controls.Add(picMenuImage);
             pnlLeft.Controls.Add(btnUpdate);
             pnlLeft.Controls.Add(btnAdd);
@@ -74,15 +72,6 @@
             pnlLeft.Size = new Size(280, 500);
             pnlLeft.TabIndex = 0;
             // 
-            // btnBrowseImage
-            // 
-            btnBrowseImage.Location = new Point(166, 403);
-            btnBrowseImage.Name = "btnBrowseImage";
-            btnBrowseImage.Size = new Size(86, 28);
-            btnBrowseImage.TabIndex = 6;
-            btnBrowseImage.Text = "이미지 선택";
-            btnBrowseImage.UseVisualStyleBackColor = true;
-            // 
             // picMenuImage
             // 
             picMenuImage.BorderStyle = BorderStyle.FixedSingle;
@@ -94,7 +83,7 @@
             // 
             // btnUpdate
             // 
-            btnUpdate.Location = new Point(148, 444);
+            btnUpdate.Location = new Point(148, 426);
             btnUpdate.Name = "btnUpdate";
             btnUpdate.Size = new Size(105, 44);
             btnUpdate.TabIndex = 4;
@@ -104,7 +93,7 @@
             // 
             // btnAdd
             // 
-            btnAdd.Location = new Point(27, 444);
+            btnAdd.Location = new Point(27, 426);
             btnAdd.Name = "btnAdd";
             btnAdd.Size = new Size(105, 44);
             btnAdd.TabIndex = 4;
@@ -196,14 +185,14 @@
             // 
             dgvMenuList.AllowUserToResizeColumns = false;
             dgvMenuList.AllowUserToResizeRows = false;
-            dataGridViewCellStyle2.Alignment = DataGridViewContentAlignment.MiddleLeft;
-            dataGridViewCellStyle2.BackColor = SystemColors.Control;
-            dataGridViewCellStyle2.Font = new Font("맑은 고딕", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            dataGridViewCellStyle2.ForeColor = SystemColors.WindowText;
-            dataGridViewCellStyle2.SelectionBackColor = SystemColors.Control;
-            dataGridViewCellStyle2.SelectionForeColor = SystemColors.ControlText;
-            dataGridViewCellStyle2.WrapMode = DataGridViewTriState.True;
-            dgvMenuList.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle2;
+            dataGridViewCellStyle1.Alignment = DataGridViewContentAlignment.MiddleLeft;
+            dataGridViewCellStyle1.BackColor = SystemColors.Control;
+            dataGridViewCellStyle1.Font = new Font("맑은 고딕", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            dataGridViewCellStyle1.ForeColor = SystemColors.WindowText;
+            dataGridViewCellStyle1.SelectionBackColor = SystemColors.Control;
+            dataGridViewCellStyle1.SelectionForeColor = SystemColors.ControlText;
+            dataGridViewCellStyle1.WrapMode = DataGridViewTriState.True;
+            dgvMenuList.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle1;
             dgvMenuList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             dgvMenuList.Dock = DockStyle.Fill;
             dgvMenuList.Location = new Point(0, 45);
@@ -283,7 +272,6 @@
         private Label label3;
         private TextBox txtJapanese;
         private TextBox txtEnglish;
-        private Button btnBrowseImage;
         private PictureBox picMenuImage;
     }
 }
