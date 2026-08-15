@@ -388,6 +388,28 @@ namespace SushiKioskAdmin.Views
             btnPickUpDone.Visible = isAppOrderFilter;
         }
 
+        public void RefreshOrders()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(RefreshOrders));
+                return;
+            }
+
+            LoadOrdersFromCsv();
+
+            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            lastOrdersModifiedTime = File.Exists(ordersPath)
+                ? File.GetLastWriteTime(ordersPath)
+                : DateTime.MinValue;
+
+            lastItemsModifiedTime = File.Exists(itemsPath)
+                ? File.GetLastWriteTime(itemsPath)
+                : DateTime.MinValue;
+        }
+
         private void refreshTimer_Tick(object sender, EventArgs e)
         {
             string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");

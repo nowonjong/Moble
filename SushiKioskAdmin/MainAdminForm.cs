@@ -26,14 +26,18 @@ namespace SushiKioskAdmin
         private readonly object memberFileLock = new object();
         private readonly object orderFileLock = new object();
 
+        private class FileSnapshot
+        {
+            public bool Exists { get; set; }
+            public byte[] Data { get; set; }
+        }
+
         public MainAdminForm()
         {
             InitializeComponent();
-
             Size = new Size(1024, 768);
             MinimumSize = new Size(1024, 768);
             StartPosition = FormStartPosition.CenterScreen;
-
             SetupSidebarStyle();
         }
 
@@ -47,13 +51,8 @@ namespace SushiKioskAdmin
 
             Button[] navButtons =
             {
-                btnNavOrder,
-                btnNavTable,
-                btnNavMenu,
-                btnNavHistory,
-                btnNavUser,
-                btnNavStock,
-                btnNavReport
+                btnNavOrder, btnNavTable, btnNavMenu, btnNavHistory,
+                btnNavUser, btnNavStock, btnNavReport
             };
 
             foreach (var btn in navButtons)
@@ -66,8 +65,7 @@ namespace SushiKioskAdmin
                 btn.Dock = DockStyle.Top;
                 btn.BackColor = Color.FromArgb(45, 45, 48);
                 btn.ForeColor = Color.White;
-                btn.FlatAppearance.MouseOverBackColor =
-                    Color.FromArgb(60, 60, 65);
+                btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 60, 65);
             }
         }
 
@@ -92,30 +90,23 @@ namespace SushiKioskAdmin
                 {
                     server = new TcpListener(IPAddress.Any, SERVER_PORT);
                     server.Start();
-
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[소켓 서버] 포트 {SERVER_PORT}에서 서버 시작");
+                    System.Diagnostics.Debug.WriteLine($"[소켓 서버] 포트 {SERVER_PORT}에서 서버 시작");
 
                     while (isServerRunning)
                     {
                         TcpClient client = server.AcceptTcpClient();
-
-                        Task.Run(() =>
-                            HandleClientCommunication(client));
+                        System.Diagnostics.Debug.WriteLine($"[클라이언트 연결] {client.Client.RemoteEndPoint}");
+                        Task.Run(() => HandleClientCommunication(client));
                     }
                 }
                 catch (SocketException ex)
                 {
                     if (isServerRunning)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[소켓 서버 오류] {ex.Message}");
-                    }
+                        System.Diagnostics.Debug.WriteLine($"[소켓 서버 오류] {ex.Message}");
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[소켓 서버 오류] {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[소켓 서버 오류] {ex.Message}");
                 }
             });
         }
@@ -130,15 +121,15 @@ namespace SushiKioskAdmin
                 using (NetworkStream stream = client.GetStream())
                 {
                     string jsonMessage = ReadJsonMessage(stream);
+                    System.Diagnostics.Debug.WriteLine($"[수신 원문] {jsonMessage}");
 
                     if (string.IsNullOrWhiteSpace(jsonMessage))
                         return;
 
                     JObject packet = JObject.Parse(jsonMessage);
+                    System.Diagnostics.Debug.WriteLine($"[수신 파싱] {packet.ToString(Newtonsoft.Json.Formatting.None)}");
 
-                    string action =
-                        packet["Action"]?.ToString()?.Trim();
-
+                    string action = packet["Action"]?.ToString()?.Trim();
                     string responseJson;
 
                     switch (action)
@@ -181,26 +172,21 @@ namespace SushiKioskAdmin
                             break;
 
                         default:
-                            responseJson =
-                                "{\"Status\":\"FAIL\",\"Message\":\"Unknown action.\"}";
+                            responseJson = Fail("Unknown action.");
                             break;
                     }
 
-                    byte[] responseBytes =
-                        Encoding.UTF8.GetBytes(responseJson);
+                    System.Diagnostics.Debug.WriteLine($"[처리 결과] {responseJson}");
 
-                    stream.Write(
-                        responseBytes,
-                        0,
-                        responseBytes.Length);
-
+                    byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
+                    stream.Write(responseBytes, 0, responseBytes.Length);
                     stream.Flush();
+                    System.Diagnostics.Debug.WriteLine($"[응답 전송 완료] {client.Client.RemoteEndPoint}");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[통신 오류] {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[통신 오류] {ex.Message}");
             }
             finally
             {
@@ -216,16 +202,13 @@ namespace SushiKioskAdmin
 
                 while (ms.Length < MAX_MESSAGE_SIZE)
                 {
-                    int bytesRead =
-                        stream.Read(buffer, 0, buffer.Length);
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
 
                     if (bytesRead <= 0)
                         break;
 
                     ms.Write(buffer, 0, bytesRead);
-
-                    string json =
-                        Encoding.UTF8.GetString(ms.ToArray());
+                    string json = Encoding.UTF8.GetString(ms.ToArray());
 
                     try
                     {
@@ -238,19 +221,13 @@ namespace SushiKioskAdmin
                 }
 
                 if (ms.Length >= MAX_MESSAGE_SIZE)
-                {
-                    throw new InvalidOperationException(
-                        "JSON message is too large.");
-                }
+                    throw new InvalidOperationException("JSON message is too large.");
 
                 if (ms.Length == 0)
                     return null;
 
-                string finalJson =
-                    Encoding.UTF8.GetString(ms.ToArray());
-
+                string finalJson = Encoding.UTF8.GetString(ms.ToArray());
                 JObject.Parse(finalJson);
-
                 return finalJson;
             }
         }
@@ -263,24 +240,13 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string identifier =
-                    packet["Identifier"]?.ToString()?.Trim();
-
-                string source =
-                    packet["Source"]?.ToString()?.Trim();
-
-                string orderType =
-                    packet["OrderType"]?.ToString()?.Trim();
-
-                string orderTime =
-                    packet["OrderTime"]?.ToString()?.Trim();
-
-                decimal totalAmount =
-                    packet["TotalAmount"]?.Value<decimal>() ?? 0;
-
-                string status =
-                    packet["Status"]?.ToString()?.Trim()
-                    ?? "접수 대기";
+                string action = packet["Action"]?.ToString()?.Trim();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
+                string source = packet["Source"]?.ToString()?.Trim();
+                string orderType = packet["OrderType"]?.ToString()?.Trim();
+                string orderTime = packet["OrderTime"]?.ToString()?.Trim();
+                decimal totalAmount = packet["TotalAmount"]?.Value<decimal>() ?? 0;
+                string status = packet["Status"]?.ToString()?.Trim() ?? "접수 대기";
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return Fail("Identifier is required.");
@@ -294,75 +260,30 @@ namespace SushiKioskAdmin
                 if (totalAmount < 0)
                     return Fail("Invalid order amount.");
 
-                // 키오스크 포장 주문 번호 검사
-                if (source == "키오스크" &&
-                    orderType == "포장" &&
-                    !IsValidKioskTakeoutIdentifier(identifier))
+                if (action == "NEW_ORDER" && source != "키오스크")
+                    return Fail("NEW_ORDER source must be kiosk.");
+
+                if (action == "NEW_APP_ORDER" && source != "앱")
+                    return Fail("NEW_APP_ORDER source must be app.");
+
+                if (source == "키오스크")
                 {
-                    return Fail(
-                        "Kiosk takeout Identifier must use K-yyyyMMdd-nnn format.");
+                    if (orderType != "매장" && orderType != "포장")
+                        return Fail("Invalid kiosk order type.");
+
+                    if (orderType == "매장" && !IsValidKioskTableOrderIdentifier(identifier))
+                        return Fail("Kiosk table Identifier must use Tnn-nn format.");
+
+                    if (orderType == "포장" && !IsValidKioskTakeoutIdentifier(identifier))
+                        return Fail("Kiosk takeout Identifier must use K-yyyyMMdd-nnn format.");
                 }
 
-                int memberId = 0;
-                int usedPoint = 0;
-                int earnedPoint = 0;
-                string paymentMethod = "앱선결제";
+                if (source == "앱" && orderType != "포장" && orderType != "배달")
+                    return Fail("Invalid app order type.");
 
-                // -------------------------------------------------
-                // 앱 주문
-                // -------------------------------------------------
-                if (source == "앱")
-                {
-                    memberId =
-                        packet["MemberId"]?.Value<int>() ?? 0;
+                if (source == "앱" && !IsValidAppOrderIdentifier(identifier))
+                    return Fail("Invalid app order identifier.");
 
-                    usedPoint =
-                        packet["UsedPoint"]?.Value<int>() ?? 0;
-
-                    paymentMethod =
-                        packet["PaymentMethod"]?.ToString()?.Trim()
-                        ?? "앱선결제";
-
-                    if (usedPoint < 0 ||
-                        usedPoint > totalAmount)
-                    {
-                        return Fail("Invalid point usage.");
-                    }
-
-                    if (memberId == 0 && usedPoint > 0)
-                    {
-                        return Fail(
-                            "Non-members cannot use points.");
-                    }
-
-                    // [수정 3] 존재하지 않는 회원 차단
-                    if (memberId > 0)
-                    {
-                        if (!MemberExists(memberId))
-                            return Fail("Member not found.");
-
-                        int availablePoint =
-                            GetAvailableMemberPoint(memberId);
-
-                        // [수정 4]
-                        // 다른 앱 주문에서 이미 예약된 포인트 고려
-                        if (usedPoint > availablePoint)
-                        {
-                            return Fail(
-                                "Not enough available points.");
-                        }
-                    }
-
-                    decimal paidAmount =
-                        totalAmount - usedPoint;
-
-                    earnedPoint =
-                        memberId > 0
-                        ? (int)(paidAmount * 0.01m)
-                        : 0;
-                }
-
-                // Items 검증
                 JArray items = packet["Items"] as JArray;
 
                 if (items == null || items.Count == 0)
@@ -372,42 +293,54 @@ namespace SushiKioskAdmin
 
                 foreach (JToken item in items)
                 {
-                    decimal price =
-                        item["Price"]?.Value<decimal>() ?? 0;
+                    string menuName = item["MenuName"]?.ToString()?.Trim();
+                    decimal price = item["Price"]?.Value<decimal>() ?? 0;
+                    int quantity = item["Quantity"]?.Value<int>() ?? 0;
+                    int discountQty = item["DiscountQty"]?.Value<int>() ?? 0;
+                    decimal subTotal = item["SubTotal"]?.Value<decimal>() ?? 0;
 
-                    int quantity =
-                        item["Quantity"]?.Value<int>() ?? 0;
+                    if (string.IsNullOrWhiteSpace(menuName))
+                        return Fail("MenuName is required.");
 
-                    int discountQty =
-                        item["DiscountQty"]?.Value<int>() ?? 0;
+                    if (menuName.Contains(","))
+                        return Fail("Comma cannot be used in MenuName.");
 
-                    decimal subTotal =
-                        item["SubTotal"]?.Value<decimal>() ?? 0;
-
-                    if (price < 0 ||
-                        quantity <= 0 ||
-                        discountQty < 0 ||
-                        discountQty > quantity)
-                    {
+                    if (price < 0 || quantity <= 0 || discountQty < 0 || discountQty > quantity)
                         return Fail("Invalid order item.");
-                    }
 
-                    decimal expectedSubTotal =
-                        (quantity - discountQty) * price;
+                    decimal expectedSubTotal = (quantity - discountQty) * price;
 
                     if (subTotal != expectedSubTotal)
-                    {
-                        return Fail(
-                            "Invalid item subtotal.");
-                    }
+                        return Fail("Invalid item subtotal.");
 
                     calculatedTotal += subTotal;
                 }
 
                 if (calculatedTotal != totalAmount)
+                    return Fail("Order total does not match item total.");
+
+                int memberId = 0;
+                int usedPoint = 0;
+                int earnedPoint = 0;
+                string paymentMethod = "앱선결제";
+
+                if (source == "앱")
                 {
-                    return Fail(
-                        "Order total does not match item total.");
+                    memberId = packet["MemberId"]?.Value<int>() ?? 0;
+                    usedPoint = packet["UsedPoint"]?.Value<int>() ?? 0;
+                    paymentMethod = packet["PaymentMethod"]?.ToString()?.Trim() ?? "앱선결제";
+
+                    if (usedPoint < 0 || usedPoint > totalAmount)
+                        return Fail("Invalid point usage.");
+
+                    if (memberId == 0 && usedPoint > 0)
+                        return Fail("Non-members cannot use points.");
+
+                    if (memberId > 0 && !MemberExists(memberId))
+                        return Fail("Member not found.");
+
+                    decimal paidAmount = totalAmount - usedPoint;
+                    earnedPoint = memberId > 0 ? (int)(paidAmount * 0.01m) : 0;
                 }
 
                 lock (orderFileLock)
@@ -418,82 +351,52 @@ namespace SushiKioskAdmin
                         {
                             ["Status"] = "FAIL",
                             ["Identifier"] = identifier,
-                            ["Message"] =
-                                "Duplicate order identifier."
-                        }.ToString(
-                            Newtonsoft.Json.Formatting.None);
+                            ["Message"] = "Duplicate order identifier."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
                     }
 
-                    string realtimePath = Path.Combine(
-                        Application.StartupPath,
-                        "susi_orders_realtime.csv");
+                    // 앱 포인트 예약 검사는 반드시 저장과 같은 lock 안에서 처리
+                    if (source == "앱" && memberId > 0)
+                    {
+                        int availablePoint = GetAvailableMemberPoint(memberId);
 
-                    string itemsPath = Path.Combine(
-                        Application.StartupPath,
-                        "susi_order_items.csv");
+                        if (usedPoint > availablePoint)
+                            return Fail("Not enough available points.");
+                    }
 
-                    string realtimeLine =
-                        $"{identifier},{source},{orderType}," +
-                        $"{orderTime},{totalAmount},{status}";
+                    string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+                    string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+                    string realtimeLine = $"{identifier},{source},{orderType},{orderTime},{totalAmount},{status}";
+                    AppendCsvLinesSafe(realtimePath, new[] { realtimeLine });
 
-                    File.AppendAllLines(
-                        realtimePath,
-                        new[] { realtimeLine },
-                        new UTF8Encoding(false));
-
-                    List<string> itemLines =
-                        new List<string>();
+                    List<string> itemLines = new List<string>();
 
                     foreach (JToken item in items)
                     {
-                        string menuName =
-                            item["MenuName"]?.ToString();
+                        string menuName = item["MenuName"]?.ToString()?.Trim();
+                        decimal price = item["Price"]?.Value<decimal>() ?? 0;
+                        int quantity = item["Quantity"]?.Value<int>() ?? 0;
+                        int discountQty = item["DiscountQty"]?.Value<int>() ?? 0;
+                        decimal subTotal = item["SubTotal"]?.Value<decimal>() ?? 0;
 
-                        decimal price =
-                            item["Price"]?.Value<decimal>() ?? 0;
-
-                        int quantity =
-                            item["Quantity"]?.Value<int>() ?? 0;
-
-                        int discountQty =
-                            item["DiscountQty"]?.Value<int>() ?? 0;
-
-                        decimal subTotal =
-                            item["SubTotal"]?.Value<decimal>() ?? 0;
-
-                        itemLines.Add(
-                            $"{identifier},{menuName},{price}," +
-                            $"{quantity},{discountQty},{subTotal}");
+                        itemLines.Add($"{identifier},{menuName},{price},{quantity},{discountQty},{subTotal}");
                     }
 
-                    File.AppendAllLines(
-                        itemsPath,
-                        itemLines,
-                        new UTF8Encoding(false));
+                    AppendCsvLinesSafe(itemsPath, itemLines);
 
                     if (source == "앱")
-                    {
-                        SaveAppPayment(
-                            identifier,
-                            memberId,
-                            usedPoint,
-                            earnedPoint,
-                            paymentMethod);
-                    }
+                        SaveAppPayment(identifier, memberId, usedPoint, earnedPoint, paymentMethod);
                 }
 
                 UpdateOrderNotice();
+                RefreshOrderBoard();
 
-                return Success(
-                    "Order registered successfully.");
+                return Success("Order registered successfully.");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[주문 접수 오류] {ex.Message}");
-
-                return Fail(
-                    "Order registration failed.");
+                System.Diagnostics.Debug.WriteLine($"[주문 접수 오류] {ex.Message}");
+                return Fail("Order registration failed.");
             }
         }
 
@@ -503,309 +406,190 @@ namespace SushiKioskAdmin
 
         private string ProcessPaymentComplete(JObject packet)
         {
+            string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+            string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
+            FileSnapshot salesBackup = null;
+            FileSnapshot realtimeBackup = null;
+            FileSnapshot itemsBackup = null;
+            FileSnapshot memberBackup = null;
+
             try
             {
-                string identifier =
-                    packet["Identifier"]?.ToString()?.Trim();
-
-                string paymentMethod =
-                    packet["PaymentMethod"]?.ToString()?.Trim()
-                    ?? "신용카드";
-
-                int memberId =
-                    packet["MemberId"]?.Value<int>() ?? 0;
-
-                int usedPoint =
-                    packet["UsedPoint"]?.Value<int>() ?? 0;
-
-                decimal originalAmount =
-                    packet["OriginalAmount"]?.Value<decimal>() ?? 0;
-
-                decimal totalAmount =
-                    packet["TotalAmount"]?.Value<decimal>() ?? 0;
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
+                string paymentMethod = packet["PaymentMethod"]?.ToString()?.Trim() ?? "신용카드";
+                int memberId = packet["MemberId"]?.Value<int>() ?? 0;
+                int usedPoint = packet["UsedPoint"]?.Value<int>() ?? 0;
+                decimal originalAmount = packet["OriginalAmount"]?.Value<decimal>() ?? 0;
+                decimal totalAmount = packet["TotalAmount"]?.Value<decimal>() ?? 0;
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return Fail("Identifier is required.");
 
-                if (originalAmount < 0 ||
-                    totalAmount < 0 ||
-                    usedPoint < 0)
-                {
+                if (originalAmount < 0 || totalAmount < 0 || usedPoint < 0)
                     return Fail("Invalid payment amount.");
-                }
 
                 if (originalAmount - usedPoint != totalAmount)
-                {
-                    return Fail(
-                        "Payment amount does not match point usage.");
-                }
+                    return Fail("Payment amount does not match point usage.");
 
-                int earnedPoint = 0;
+                if (memberId == 0 && usedPoint > 0)
+                    return Fail("Non-members cannot use points.");
 
-                // [수정 3] 회원 존재 여부 확인
-                if (memberId > 0)
-                {
-                    if (!MemberExists(memberId))
-                        return Fail("Member not found.");
+                if (memberId > 0 && !MemberExists(memberId))
+                    return Fail("Member not found.");
 
-                    int currentPoint =
-                        GetMemberPoint(memberId);
-
-                    if (usedPoint > currentPoint)
-                        return Fail("Not enough points.");
-
-                    earnedPoint =
-                        (int)(totalAmount * 0.01m);
-                }
-                else if (usedPoint > 0)
-                {
-                    return Fail(
-                        "Non-members cannot use points.");
-                }
-
-                string tablePrefix =
-                    GetTablePrefix(identifier);
-
+                int earnedPoint = memberId > 0 ? (int)(totalAmount * 0.01m) : 0;
+                string tablePrefix = GetTablePrefix(identifier);
                 string orderType;
                 decimal serverOrderAmount;
 
-                // -------------------------------------------------
-                // 매장 주문
-                // -------------------------------------------------
-                if (tablePrefix != null)
-                {
-                    orderType = "매장";
-
-                    // [수정 1]
-                    // 실제 T02-* 주문이 존재하는지 확인
-                    if (!TryGetTableOrderTotal(
-                        tablePrefix,
-                        out serverOrderAmount))
-                    {
-                        return Fail(
-                            "Realtime order not found.");
-                    }
-
-                    // [수정 2]
-                    // 서버에 저장된 주문금액과 비교
-                    if (serverOrderAmount != originalAmount)
-                    {
-                        return new JObject
-                        {
-                            ["Status"] = "FAIL",
-                            ["ServerAmount"] =
-                                serverOrderAmount,
-                            ["ReceivedAmount"] =
-                                originalAmount,
-                            ["Message"] =
-                                "OriginalAmount does not match server order total."
-                        }.ToString(
-                            Newtonsoft.Json.Formatting.None);
-                    }
-                }
-                // -------------------------------------------------
-                // 키오스크 포장
-                // -------------------------------------------------
-                else
-                {
-                    if (!GetRealtimeOrderInfo(
-                        identifier,
-                        out orderType,
-                        out serverOrderAmount))
-                    {
-                        return Fail(
-                            "Realtime order not found.");
-                    }
-
-                    if (orderType != "포장")
-                    {
-                        return Fail(
-                            "Invalid kiosk payment identifier.");
-                    }
-
-                    if (!IsValidKioskTakeoutIdentifier(identifier))
-                    {
-                        return Fail(
-                            "Invalid kiosk takeout identifier.");
-                    }
-
-                    // [수정 2]
-                    if (serverOrderAmount != originalAmount)
-                    {
-                        return new JObject
-                        {
-                            ["Status"] = "FAIL",
-                            ["ServerAmount"] =
-                                serverOrderAmount,
-                            ["ReceivedAmount"] =
-                                originalAmount,
-                            ["Message"] =
-                                "OriginalAmount does not match server order total."
-                        }.ToString(
-                            Newtonsoft.Json.Formatting.None);
-                    }
-                }
-
-                string paymentDate =
-                    DateTime.Now.ToString(
-                        "yyyy-MM-dd HH:mm:ss");
-
-                string newReceiptNo;
-
                 lock (orderFileLock)
                 {
-                    // 다시 한번 주문 존재 여부 확인
-                    // 동시 결제 요청 방지
                     if (tablePrefix != null)
                     {
-                        if (!TryGetTableOrderTotal(
-                            tablePrefix,
-                            out decimal checkAmount))
-                        {
-                            return Fail(
-                                "Order already processed.");
-                        }
+                        orderType = "매장";
 
-                        if (checkAmount != originalAmount)
-                        {
-                            return Fail(
-                                "Order amount changed.");
-                        }
+                        if (!TryGetTableOrderTotal(tablePrefix, out serverOrderAmount))
+                            return Fail("Realtime order not found.");
                     }
                     else
                     {
-                        if (!GetRealtimeOrderInfo(
-                            identifier,
-                            out _,
-                            out decimal checkAmount))
-                        {
-                            return Fail(
-                                "Order already processed.");
-                        }
+                        if (!GetRealtimeOrderInfo(identifier, out orderType, out serverOrderAmount))
+                            return Fail("Realtime order not found.");
 
-                        if (checkAmount != originalAmount)
-                        {
-                            return Fail(
-                                "Order amount changed.");
-                        }
+                        if (orderType != "포장")
+                            return Fail("Invalid kiosk payment identifier.");
+
+                        if (!IsValidKioskTakeoutIdentifier(identifier))
+                            return Fail("Invalid kiosk takeout identifier.");
                     }
 
-                    newReceiptNo =
-                        GenerateNewReceiptNumber();
-
-                    string salesPath = Path.Combine(
-                        Application.StartupPath,
-                        "susi_sales_history.csv");
-
-                    string salesLine =
-                        $"{newReceiptNo},{paymentDate}," +
-                        $"키오스크,{orderType}," +
-                        $"{originalAmount},{usedPoint}," +
-                        $"{totalAmount},{earnedPoint}," +
-                        $"{memberId},{paymentMethod}";
-
-                    File.AppendAllLines(
-                        salesPath,
-                        new[] { salesLine },
-                        new UTF8Encoding(false));
-
-                    // 먼저 realtime 제거
-                    string realtimePath = Path.Combine(
-                        Application.StartupPath,
-                        "susi_orders_realtime.csv");
-
-                    if (File.Exists(realtimePath))
+                    if (serverOrderAmount != originalAmount)
                     {
-                        List<string> lines =
-                            File.ReadAllLines(
-                                realtimePath,
-                                Encoding.UTF8).ToList();
+                        return new JObject
+                        {
+                            ["Status"] = "FAIL",
+                            ["ServerAmount"] = serverOrderAmount,
+                            ["ReceivedAmount"] = originalAmount,
+                            ["Message"] = "OriginalAmount does not match server order total."
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+
+                    // 앱에서 예약 중인 포인트까지 고려
+                    if (memberId > 0)
+                    {
+                        int availablePoint = GetAvailableMemberPoint(memberId);
+
+                        if (usedPoint > availablePoint)
+                            return Fail("Not enough available points.");
+                    }
+
+                    // 실제 파일 변경 직전에 한 번 더 확인
+                    if (tablePrefix != null)
+                    {
+                        if (!TryGetTableOrderTotal(tablePrefix, out decimal checkAmount))
+                            return Fail("Order already processed.");
+
+                        if (checkAmount != originalAmount)
+                            return Fail("Order amount changed.");
+                    }
+                    else
+                    {
+                        if (!GetRealtimeOrderInfo(identifier, out _, out decimal checkAmount))
+                            return Fail("Order already processed.");
+
+                        if (checkAmount != originalAmount)
+                            return Fail("Order amount changed.");
+                    }
+
+                    salesBackup = CreateSnapshot(salesPath);
+                    realtimeBackup = CreateSnapshot(realtimePath);
+                    itemsBackup = CreateSnapshot(itemsPath);
+
+                    if (memberId > 0)
+                        memberBackup = CreateSnapshot(memberPath);
+
+                    string newReceiptNo = GenerateNewReceiptNumber();
+                    string paymentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+                    // 포인트 먼저 처리하고 이후 작업 실패 시 백업으로 모두 복구
+                    if (memberId > 0)
+                    {
+                        bool pointUpdated = UpdateMemberPoint(memberId, usedPoint, earnedPoint);
+
+                        if (!pointUpdated)
+                            return Fail("Failed to update member points.");
+                    }
+
+                    try
+                    {
+                        string salesLine = $"{newReceiptNo},{paymentDate},키오스크,{orderType},{originalAmount},{usedPoint},{totalAmount},{earnedPoint},{memberId},{paymentMethod}";
+                        AppendCsvLinesSafe(salesPath, new[] { salesLine });
+
+                        if (File.Exists(realtimePath))
+                        {
+                            List<string> lines = File.ReadAllLines(realtimePath, Encoding.UTF8).ToList();
+
+                            if (tablePrefix != null)
+                            {
+                                lines.RemoveAll(line =>
+                                {
+                                    string[] parts = line.Split(',');
+                                    return parts.Length > 0 && parts[0].Trim().StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase);
+                                });
+                            }
+                            else
+                            {
+                                lines.RemoveAll(line =>
+                                {
+                                    string[] parts = line.Split(',');
+                                    return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
+                                });
+                            }
+
+                            File.WriteAllLines(realtimePath, lines, new UTF8Encoding(false));
+                        }
 
                         if (tablePrefix != null)
-                        {
-                            lines.RemoveAll(line =>
-                            {
-                                string[] parts =
-                                    line.Split(',');
-
-                                return parts.Length > 0 &&
-                                    parts[0].Trim().StartsWith(
-                                        tablePrefix,
-                                        StringComparison.OrdinalIgnoreCase);
-                            });
-                        }
+                            UpdateTableItemKeyIds(tablePrefix, newReceiptNo);
                         else
-                        {
-                            lines.RemoveAll(line =>
-                            {
-                                string[] parts =
-                                    line.Split(',');
+                            UpdateItemKeyId(identifier, newReceiptNo);
+                    }
+                    catch
+                    {
+                        RestoreSnapshot(salesPath, salesBackup);
+                        RestoreSnapshot(realtimePath, realtimeBackup);
+                        RestoreSnapshot(itemsPath, itemsBackup);
 
-                                return parts.Length > 0 &&
-                                    parts[0].Trim().Equals(
-                                        identifier,
-                                        StringComparison.OrdinalIgnoreCase);
-                            });
+                        if (memberId > 0)
+                        {
+                            lock (memberFileLock)
+                                RestoreSnapshot(memberPath, memberBackup);
                         }
 
-                        File.WriteAllLines(
-                            realtimePath,
-                            lines,
-                            new UTF8Encoding(false));
+                        throw;
                     }
 
-                    if (tablePrefix != null)
+                    UpdateOrderNotice();
+
+                    return new JObject
                     {
-                        UpdateTableItemKeyIds(
-                            tablePrefix,
-                            newReceiptNo);
-                    }
-                    else
-                    {
-                        UpdateItemKeyId(
-                            identifier,
-                            newReceiptNo);
-                    }
+                        ["Status"] = "SUCCESS",
+                        ["ReceiptNo"] = newReceiptNo,
+                        ["OriginalAmount"] = originalAmount,
+                        ["UsedPoint"] = usedPoint,
+                        ["TotalAmount"] = totalAmount,
+                        ["EarnedPoint"] = earnedPoint,
+                        ["Message"] = "Payment processed successfully."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
                 }
-
-                // 회원 포인트 처리
-                if (memberId > 0)
-                {
-                    bool pointUpdated =
-                        UpdateMemberPoint(
-                            memberId,
-                            usedPoint,
-                            earnedPoint);
-
-                    if (!pointUpdated)
-                    {
-                        return Fail(
-                            "Failed to update member points.");
-                    }
-                }
-
-                UpdateOrderNotice();
-
-                return new JObject
-                {
-                    ["Status"] = "SUCCESS",
-                    ["ReceiptNo"] = newReceiptNo,
-                    ["OriginalAmount"] = originalAmount,
-                    ["UsedPoint"] = usedPoint,
-                    ["TotalAmount"] = totalAmount,
-                    ["EarnedPoint"] = earnedPoint,
-                    ["Message"] =
-                        "Payment processed successfully."
-                }.ToString(
-                    Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[결제 처리 오류] {ex.Message}");
-
-                return Fail(
-                    "Payment processing failed.");
+                System.Diagnostics.Debug.WriteLine($"[결제 처리 오류] {ex.Message}");
+                return Fail("Payment processing failed.");
             }
         }
 
@@ -815,139 +599,108 @@ namespace SushiKioskAdmin
 
         private string ProcessAppPickupComplete(JObject packet)
         {
+            string salesPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+            string paymentPath = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
+            string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
             try
             {
-                string identifier =
-                    packet["Identifier"]?.ToString()?.Trim();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return Fail("Identifier is required.");
 
-                if (!GetRealtimeOrderInfo(
-                    identifier,
-                    out string orderType,
-                    out decimal originalAmount))
-                {
-                    return Fail(
-                        "Realtime order not found.");
-                }
-
-                if (!GetAppPayment(
-                    identifier,
-                    out int memberId,
-                    out int usedPoint,
-                    out int earnedPoint,
-                    out string paymentMethod))
-                {
-                    return Fail(
-                        "Payment information not found.");
-                }
-
-                decimal totalAmount =
-                    originalAmount - usedPoint;
-
-                if (totalAmount < 0)
-                    return Fail("Invalid payment amount.");
-
-                if (memberId > 0)
-                {
-                    if (!MemberExists(memberId))
-                        return Fail("Member not found.");
-
-                    /*
-                     * 중요:
-                     * 이 주문의 UsedPoint는 이미
-                     * susi_order_payments.csv에 예약되어 있음.
-                     *
-                     * 픽업 완료 시에는 실제 member.csv에서
-                     * 차감한다.
-                     */
-                    int currentPoint =
-                        GetMemberPoint(memberId);
-
-                    if (usedPoint > currentPoint)
-                        return Fail("Not enough points.");
-                }
-
-                string paymentDate =
-                    DateTime.Now.ToString(
-                        "yyyy-MM-dd HH:mm:ss");
-
-                // 앱 주문번호를 ReceiptNo로 사용
-                string receiptNo = identifier;
-
                 lock (orderFileLock)
                 {
-                    // 중복 완료 방지
-                    if (SalesIdentifierExists(receiptNo))
+                    if (!GetRealtimeOrderInfo(identifier, out string orderType, out decimal originalAmount))
+                        return Fail("Realtime order not found.");
+
+                    if (!GetAppPayment(identifier, out int memberId, out int usedPoint, out int earnedPoint, out string paymentMethod))
+                        return Fail("Payment information not found.");
+
+                    decimal totalAmount = originalAmount - usedPoint;
+
+                    if (totalAmount < 0)
+                        return Fail("Invalid payment amount.");
+
+                    if (SalesIdentifierExists(identifier))
                         return Fail("Order already completed.");
 
-                    string salesPath = Path.Combine(
-                        Application.StartupPath,
-                        "susi_sales_history.csv");
-
-                    string salesLine =
-                        $"{receiptNo},{paymentDate},앱," +
-                        $"{orderType},{originalAmount}," +
-                        $"{usedPoint},{totalAmount}," +
-                        $"{earnedPoint},{memberId}," +
-                        $"{paymentMethod}";
-
-                    File.AppendAllLines(
-                        salesPath,
-                        new[] { salesLine },
-                        new UTF8Encoding(false));
-                }
-
-                if (memberId > 0)
-                {
-                    bool pointUpdated =
-                        UpdateMemberPoint(
-                            memberId,
-                            usedPoint,
-                            earnedPoint);
-
-                    if (!pointUpdated)
+                    if (memberId > 0)
                     {
-                        RemoveSalesHistory(receiptNo);
+                        if (!MemberExists(memberId))
+                            return Fail("Member not found.");
 
-                        return Fail(
-                            "Failed to update member points.");
+                        int currentPoint = GetMemberPoint(memberId);
+
+                        if (usedPoint > currentPoint)
+                            return Fail("Not enough points.");
                     }
+
+                    FileSnapshot salesBackup = CreateSnapshot(salesPath);
+                    FileSnapshot realtimeBackup = CreateSnapshot(realtimePath);
+                    FileSnapshot itemsBackup = CreateSnapshot(itemsPath);
+                    FileSnapshot paymentBackup = CreateSnapshot(paymentPath);
+                    FileSnapshot memberBackup = memberId > 0 ? CreateSnapshot(memberPath) : null;
+
+                    string paymentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    string receiptNo = identifier;
+
+                    if (memberId > 0)
+                    {
+                        bool pointUpdated = UpdateMemberPoint(memberId, usedPoint, earnedPoint);
+
+                        if (!pointUpdated)
+                            return Fail("Failed to update member points.");
+                    }
+
+                    try
+                    {
+                        string salesLine = $"{receiptNo},{paymentDate},앱,{orderType},{originalAmount},{usedPoint},{totalAmount},{earnedPoint},{memberId},{paymentMethod}";
+                        AppendCsvLinesSafe(salesPath, new[] { salesLine });
+
+                        RemoveRealtimeOrder(identifier);
+                        RemoveAppPayment(identifier);
+
+                        // 앱은 Identifier와 ReceiptNo가 같으므로 실질적으로 값은 그대로지만 유지
+                        UpdateItemKeyId(identifier, receiptNo);
+                    }
+                    catch
+                    {
+                        RestoreSnapshot(salesPath, salesBackup);
+                        RestoreSnapshot(realtimePath, realtimeBackup);
+                        RestoreSnapshot(itemsPath, itemsBackup);
+                        RestoreSnapshot(paymentPath, paymentBackup);
+
+                        if (memberId > 0)
+                        {
+                            lock (memberFileLock)
+                                RestoreSnapshot(memberPath, memberBackup);
+                        }
+
+                        throw;
+                    }
+
+                    UpdateOrderNotice();
+
+                    return new JObject
+                    {
+                        ["Status"] = "SUCCESS",
+                        ["ReceiptNo"] = receiptNo,
+                        ["OriginalAmount"] = originalAmount,
+                        ["UsedPoint"] = usedPoint,
+                        ["TotalAmount"] = totalAmount,
+                        ["EarnedPoint"] = earnedPoint,
+                        ["Message"] = "App order pickup completed."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
                 }
-
-                lock (orderFileLock)
-                {
-                    RemoveRealtimeOrder(identifier);
-                    RemoveAppPayment(identifier);
-
-                    UpdateItemKeyId(
-                        identifier,
-                        receiptNo);
-                }
-
-                UpdateOrderNotice();
-
-                return new JObject
-                {
-                    ["Status"] = "SUCCESS",
-                    ["ReceiptNo"] = receiptNo,
-                    ["OriginalAmount"] = originalAmount,
-                    ["UsedPoint"] = usedPoint,
-                    ["TotalAmount"] = totalAmount,
-                    ["EarnedPoint"] = earnedPoint,
-                    ["Message"] =
-                        "App order pickup completed."
-                }.ToString(
-                    Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[앱 주문 완료 오류] {ex.Message}");
-
-                return Fail(
-                    "App pickup processing failed.");
+                System.Diagnostics.Debug.WriteLine($"[앱 주문 완료 오류] {ex.Message}");
+                return Fail("App pickup processing failed.");
             }
         }
 
@@ -959,81 +712,51 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string identifier =
-                    packet["Identifier"]?.ToString()?.Trim();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return Fail("Identifier is required.");
 
-                if (!GetRealtimeOrderInfo(
-                    identifier,
-                    out string orderType,
-                    out decimal originalAmount))
-                {
-                    return Fail(
-                        "Realtime order not found.");
-                }
-
-                int memberId = 0;
-                int usedPoint = 0;
-                int earnedPoint = 0;
-                string paymentMethod = "앱선결제";
-
-                GetAppPayment(
-                    identifier,
-                    out memberId,
-                    out usedPoint,
-                    out earnedPoint,
-                    out paymentMethod);
-
-                decimal refundAmount =
-                    originalAmount - usedPoint;
-
-                if (refundAmount < 0)
-                    refundAmount = 0;
-
                 lock (orderFileLock)
                 {
-                    SaveRejectedOrder(
-                        identifier,
-                        orderType);
+                    if (!GetRealtimeOrderInfo(identifier, out string orderType, out decimal originalAmount))
+                        return Fail("Realtime order not found.");
 
+                    int memberId = 0;
+                    int usedPoint = 0;
+                    int earnedPoint = 0;
+                    string paymentMethod = "앱선결제";
+
+                    GetAppPayment(identifier, out memberId, out usedPoint, out earnedPoint, out paymentMethod);
+
+                    decimal refundAmount = originalAmount - usedPoint;
+
+                    if (refundAmount < 0)
+                        refundAmount = 0;
+
+                    SaveRejectedOrder(identifier, orderType);
                     RemoveRealtimeOrder(identifier);
                     RemoveAppPayment(identifier);
                     RemoveOrderItems(identifier);
+
+                    UpdateOrderNotice();
+
+                    return new JObject
+                    {
+                        ["Status"] = "SUCCESS",
+                        ["Identifier"] = identifier,
+                        ["OrderStatus"] = "주문 거절",
+                        ["RefundRequired"] = true,
+                        ["RefundAmount"] = refundAmount,
+                        ["PaymentMethod"] = paymentMethod,
+                        ["Message"] = "App order rejected. Prepayment cancellation is required."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
                 }
-
-                /*
-                 * 예약 방식이므로
-                 * member.csv 포인트를 복구할 필요 없음.
-                 *
-                 * RemoveAppPayment()를 하면
-                 * 해당 주문의 예약 포인트가 사라져서
-                 * 다시 사용 가능한 포인트가 됨.
-                 */
-
-                UpdateOrderNotice();
-
-                return new JObject
-                {
-                    ["Status"] = "SUCCESS",
-                    ["Identifier"] = identifier,
-                    ["OrderStatus"] = "주문 거절",
-                    ["RefundRequired"] = true,
-                    ["RefundAmount"] = refundAmount,
-                    ["PaymentMethod"] = paymentMethod,
-                    ["Message"] =
-                        "App order rejected. Prepayment cancellation is required."
-                }.ToString(
-                    Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[앱 주문 거절 오류] {ex.Message}");
-
-                return Fail(
-                    "App order rejection failed.");
+                System.Diagnostics.Debug.WriteLine($"[앱 주문 거절 오류] {ex.Message}");
+                return Fail("App order rejection failed.");
             }
         }
 
@@ -1045,91 +768,74 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string identifier =
-                    packet["Identifier"]?.ToString()?.Trim();
+                string identifier = packet["Identifier"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(identifier))
                     return Fail("Identifier is required.");
 
-                string realtimePath = Path.Combine(
-                    Application.StartupPath,
-                    "susi_orders_realtime.csv");
-
-                if (File.Exists(realtimePath))
+                lock (orderFileLock)
                 {
-                    foreach (string line in
-                        File.ReadAllLines(
-                            realtimePath,
-                            Encoding.UTF8))
+                    string realtimePath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+
+                    if (File.Exists(realtimePath))
                     {
-                        if (string.IsNullOrWhiteSpace(line))
-                            continue;
-
-                        string[] parts = line.Split(',');
-
-                        if (parts.Length < 6)
-                            continue;
-
-                        if (parts[0].Trim().Equals(
-                            identifier,
-                            StringComparison.OrdinalIgnoreCase))
+                        foreach (string line in File.ReadAllLines(realtimePath, Encoding.UTF8))
                         {
-                            return new JObject
+                            if (string.IsNullOrWhiteSpace(line))
+                                continue;
+
+                            string[] parts = line.Split(',');
+
+                            if (parts.Length < 6)
+                                continue;
+
+                            if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                             {
-                                ["Status"] = "SUCCESS",
-                                ["Identifier"] = identifier,
-                                ["OrderStatus"] =
-                                    parts[5].Trim()
-                            }.ToString(
-                                Newtonsoft.Json.Formatting.None);
+                                return new JObject
+                                {
+                                    ["Status"] = "SUCCESS",
+                                    ["Identifier"] = identifier,
+                                    ["OrderStatus"] = parts[5].Trim()
+                                }.ToString(Newtonsoft.Json.Formatting.None);
+                            }
                         }
                     }
-                }
 
-                if (SalesIdentifierExists(identifier))
-                {
-                    return new JObject
+                    if (SalesIdentifierExists(identifier))
                     {
-                        ["Status"] = "SUCCESS",
-                        ["Identifier"] = identifier,
-                        ["OrderStatus"] = "픽업 완료"
-                    }.ToString(
-                        Newtonsoft.Json.Formatting.None);
-                }
-
-                string rejectionPath = Path.Combine(
-                    Application.StartupPath,
-                    "susi_order_rejections.csv");
-
-                if (File.Exists(rejectionPath))
-                {
-                    foreach (string line in
-                        File.ReadAllLines(
-                            rejectionPath,
-                            Encoding.UTF8))
-                    {
-                        if (string.IsNullOrWhiteSpace(line))
-                            continue;
-
-                        string[] parts = line.Split(',');
-
-                        if (parts.Length < 4)
-                            continue;
-
-                        if (parts[0].Trim().Equals(
-                            identifier,
-                            StringComparison.OrdinalIgnoreCase))
+                        return new JObject
                         {
-                            return new JObject
+                            ["Status"] = "SUCCESS",
+                            ["Identifier"] = identifier,
+                            ["OrderStatus"] = "픽업 완료"
+                        }.ToString(Newtonsoft.Json.Formatting.None);
+                    }
+
+                    string rejectionPath = Path.Combine(Application.StartupPath, "susi_order_rejections.csv");
+
+                    if (File.Exists(rejectionPath))
+                    {
+                        foreach (string line in File.ReadAllLines(rejectionPath, Encoding.UTF8))
+                        {
+                            if (string.IsNullOrWhiteSpace(line))
+                                continue;
+
+                            string[] parts = line.Split(',');
+
+                            if (parts.Length < 4)
+                                continue;
+
+                            if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                             {
-                                ["Status"] = "SUCCESS",
-                                ["Identifier"] = identifier,
-                                ["OrderStatus"] = "주문 거절",
-                                ["RefundRequired"] = true,
-                                ["Message"] =
-                                    "Order rejected. Check prepayment cancellation."
-                            }.ToString(
-                                Newtonsoft.Json.Formatting.None);
+                                return new JObject
+                                {
+                                    ["Status"] = "SUCCESS",
+                                    ["Identifier"] = identifier,
+                                    ["OrderStatus"] = "주문 거절",
+                                    ["RefundRequired"] = true,
+                                    ["Message"] = "Order rejected. Check prepayment cancellation."
+                                }.ToString(Newtonsoft.Json.Formatting.None);
+                            }
                         }
                     }
                 }
@@ -1139,16 +845,12 @@ namespace SushiKioskAdmin
                     ["Status"] = "FAIL",
                     ["Identifier"] = identifier,
                     ["Message"] = "Order not found."
-                }.ToString(
-                    Newtonsoft.Json.Formatting.None);
+                }.ToString(Newtonsoft.Json.Formatting.None);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[주문 상태 조회 오류] {ex.Message}");
-
-                return Fail(
-                    "Failed to get order status.");
+                System.Diagnostics.Debug.WriteLine($"[주문 상태 조회 오류] {ex.Message}");
+                return Fail("Failed to get order status.");
             }
         }
 
@@ -1160,17 +862,10 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string memberName =
-                    packet["MemberName"]?.ToString()?.Trim();
-
-                string phone =
-                    packet["Phone"]?.ToString()?.Trim();
-
-                string password =
-                    packet["Password"]?.ToString()?.Trim();
-
-                string address =
-                    packet["Address"]?.ToString()?.Trim() ?? "";
+                string memberName = packet["MemberName"]?.ToString()?.Trim();
+                string phone = packet["Phone"]?.ToString()?.Trim();
+                string password = packet["Password"]?.ToString()?.Trim();
+                string address = packet["Address"]?.ToString()?.Trim() ?? "";
 
                 if (string.IsNullOrWhiteSpace(memberName))
                     return Fail("MemberName is required.");
@@ -1181,33 +876,17 @@ namespace SushiKioskAdmin
                 if (string.IsNullOrWhiteSpace(password))
                     return Fail("Password is required.");
 
-                if (memberName.Contains(",") ||
-                    phone.Contains(",") ||
-                    password.Contains(",") ||
-                    address.Contains(","))
-                {
-                    return Fail(
-                        "Comma cannot be used in member information.");
-                }
+                if (memberName.Contains(",") || phone.Contains(",") || password.Contains(",") || address.Contains(","))
+                    return Fail("Comma cannot be used in member information.");
 
                 lock (memberFileLock)
                 {
-                    string memberPath = Path.Combine(
-                        Application.StartupPath,
-                        "member.csv");
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
 
                     if (!File.Exists(memberPath))
-                    {
-                        File.WriteAllText(
-                            memberPath,
-                            "",
-                            new UTF8Encoding(false));
-                    }
+                        File.WriteAllText(memberPath, "", new UTF8Encoding(false));
 
-                    string[] lines =
-                        File.ReadAllLines(
-                            memberPath,
-                            Encoding.UTF8);
+                    string[] lines = File.ReadAllLines(memberPath, Encoding.UTF8);
 
                     foreach (string line in lines)
                     {
@@ -1219,32 +898,16 @@ namespace SushiKioskAdmin
                         if (parts.Length < 7)
                             continue;
 
-                        if (parts[2].Trim().Equals(
-                            phone,
-                            StringComparison.OrdinalIgnoreCase))
-                        {
-                            return Fail(
-                                "Phone number already registered.");
-                        }
+                        if (parts[2].Trim().Equals(phone, StringComparison.OrdinalIgnoreCase))
+                            return Fail("Phone number already registered.");
                     }
 
-                    int memberId =
-                        GenerateNextMemberId(lines);
-
+                    int memberId = GenerateNextMemberId(lines);
                     int point = 0;
+                    string joinDate = DateTime.Now.ToString("yyyy-MM-dd");
+                    string memberLine = $"{memberId},{memberName},{phone},{password},{point},{address},{joinDate}";
 
-                    string joinDate =
-                        DateTime.Now.ToString("yyyy-MM-dd");
-
-                    string memberLine =
-                        $"{memberId},{memberName}," +
-                        $"{phone},{password},{point}," +
-                        $"{address},{joinDate}";
-
-                    File.AppendAllLines(
-                        memberPath,
-                        new[] { memberLine },
-                        new UTF8Encoding(false));
+                    AppendCsvLinesSafe(memberPath, new[] { memberLine });
 
                     return new JObject
                     {
@@ -1252,19 +915,14 @@ namespace SushiKioskAdmin
                         ["MemberId"] = memberId,
                         ["Point"] = point,
                         ["JoinDate"] = joinDate,
-                        ["Message"] =
-                            "Member registered successfully."
-                    }.ToString(
-                        Newtonsoft.Json.Formatting.None);
+                        ["Message"] = "Member registered successfully."
+                    }.ToString(Newtonsoft.Json.Formatting.None);
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[회원가입 오류] {ex.Message}");
-
-                return Fail(
-                    "Member registration failed.");
+                System.Diagnostics.Debug.WriteLine($"[회원가입 오류] {ex.Message}");
+                return Fail("Member registration failed.");
             }
         }
 
@@ -1276,11 +934,8 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string phone =
-                    packet["Phone"]?.ToString()?.Trim();
-
-                string password =
-                    packet["Password"]?.ToString()?.Trim();
+                string phone = packet["Phone"]?.ToString()?.Trim();
+                string password = packet["Password"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(phone))
                     return Fail("Phone is required.");
@@ -1290,17 +945,12 @@ namespace SushiKioskAdmin
 
                 lock (memberFileLock)
                 {
-                    string memberPath = Path.Combine(
-                        Application.StartupPath,
-                        "member.csv");
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
 
                     if (!File.Exists(memberPath))
                         return Fail("Member data not found.");
 
-                    foreach (string line in
-                        File.ReadAllLines(
-                            memberPath,
-                            Encoding.UTF8))
+                    foreach (string line in File.ReadAllLines(memberPath, Encoding.UTF8))
                     {
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
@@ -1310,27 +960,16 @@ namespace SushiKioskAdmin
                         if (parts.Length < 7)
                             continue;
 
-                        string savedPhone =
-                            parts[2].Trim();
+                        string savedPhone = parts[2].Trim();
 
-                        if (!savedPhone.Equals(
-                            phone,
-                            StringComparison.OrdinalIgnoreCase))
+                        if (!savedPhone.Equals(phone, StringComparison.OrdinalIgnoreCase))
                             continue;
 
                         if (parts[3].Trim() != password)
-                        {
-                            return Fail(
-                                "Invalid phone or password.");
-                        }
+                            return Fail("Invalid phone or password.");
 
-                        int.TryParse(
-                            parts[0].Trim(),
-                            out int memberId);
-
-                        int.TryParse(
-                            parts[4].Trim(),
-                            out int point);
+                        int.TryParse(parts[0].Trim(), out int memberId);
+                        int.TryParse(parts[4].Trim(), out int point);
 
                         return new JObject
                         {
@@ -1342,50 +981,40 @@ namespace SushiKioskAdmin
                             ["Address"] = parts[5].Trim(),
                             ["JoinDate"] = parts[6].Trim(),
                             ["Message"] = "Login successful."
-                        }.ToString(
-                            Newtonsoft.Json.Formatting.None);
+                        }.ToString(Newtonsoft.Json.Formatting.None);
                     }
                 }
 
-                return Fail(
-                    "Invalid phone or password.");
+                return Fail("Invalid phone or password.");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[로그인 오류] {ex.Message}");
-
+                System.Diagnostics.Debug.WriteLine($"[로그인 오류] {ex.Message}");
                 return Fail("Login failed.");
             }
         }
 
         // =========================================================
-        // 키오스크 회원 조회
+        // 회원 조회
         // =========================================================
 
         private string ProcessGetMember(JObject packet)
         {
             try
             {
-                string phone =
-                    packet["Phone"]?.ToString()?.Trim();
+                string phone = packet["Phone"]?.ToString()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(phone))
                     return Fail("Phone is required.");
 
                 lock (memberFileLock)
                 {
-                    string memberPath = Path.Combine(
-                        Application.StartupPath,
-                        "member.csv");
+                    string memberPath = Path.Combine(Application.StartupPath, "member.csv");
 
                     if (!File.Exists(memberPath))
                         return Fail("Member data not found.");
 
-                    foreach (string line in
-                        File.ReadAllLines(
-                            memberPath,
-                            Encoding.UTF8))
+                    foreach (string line in File.ReadAllLines(memberPath, Encoding.UTF8))
                     {
                         if (string.IsNullOrWhiteSpace(line))
                             continue;
@@ -1395,18 +1024,11 @@ namespace SushiKioskAdmin
                         if (parts.Length < 7)
                             continue;
 
-                        if (!parts[2].Trim().Equals(
-                            phone,
-                            StringComparison.OrdinalIgnoreCase))
+                        if (!parts[2].Trim().Equals(phone, StringComparison.OrdinalIgnoreCase))
                             continue;
 
-                        int.TryParse(
-                            parts[0].Trim(),
-                            out int memberId);
-
-                        int.TryParse(
-                            parts[4].Trim(),
-                            out int point);
+                        int.TryParse(parts[0].Trim(), out int memberId);
+                        int.TryParse(parts[4].Trim(), out int point);
 
                         return new JObject
                         {
@@ -1416,17 +1038,16 @@ namespace SushiKioskAdmin
                             ["Phone"] = parts[2].Trim(),
                             ["Point"] = point,
                             ["Message"] = "Member found."
-                        }.ToString(
-                            Newtonsoft.Json.Formatting.None);
+                        }.ToString(Newtonsoft.Json.Formatting.None);
                     }
                 }
 
                 return Fail("Member not found.");
             }
-            catch
+            catch (Exception ex)
             {
-                return Fail(
-                    "Failed to get member information.");
+                System.Diagnostics.Debug.WriteLine($"[회원 조회 오류] {ex.Message}");
+                return Fail("Failed to get member information.");
             }
         }
 
@@ -1438,19 +1059,14 @@ namespace SushiKioskAdmin
         {
             try
             {
-                string menuPath = Path.Combine(
-                    Application.StartupPath,
-                    "susi_menu.csv");
+                string menuPath = Path.Combine(Application.StartupPath, "susi_menu.csv");
 
                 if (!File.Exists(menuPath))
                     return Fail("Menu data not found.");
 
                 JArray menus = new JArray();
 
-                foreach (string line in
-                    File.ReadAllLines(
-                        menuPath,
-                        Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(menuPath, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
@@ -1460,14 +1076,10 @@ namespace SushiKioskAdmin
                     if (parts.Length < 7)
                         continue;
 
-                    if (!int.TryParse(
-                        parts[0].Trim(),
-                        out int menuId))
+                    if (!int.TryParse(parts[0].Trim(), out int menuId))
                         continue;
 
-                    int.TryParse(
-                        parts[4].Trim(),
-                        out int price);
+                    int.TryParse(parts[4].Trim(), out int price);
 
                     menus.Add(new JObject
                     {
@@ -1485,33 +1097,29 @@ namespace SushiKioskAdmin
                 {
                     ["Status"] = "SUCCESS",
                     ["Menus"] = menus
-                }.ToString(
-                    Newtonsoft.Json.Formatting.None);
+                }.ToString(Newtonsoft.Json.Formatting.None);
             }
-            catch
+            catch (Exception ex)
             {
-                return Fail(
-                    "Failed to get menu information.");
+                System.Diagnostics.Debug.WriteLine($"[메뉴 조회 오류] {ex.Message}");
+                return Fail("Failed to get menu information.");
             }
         }
 
         // =========================================================
-        // [추가] 회원 존재 여부
+        // 회원 / 포인트
         // =========================================================
 
         private bool MemberExists(int memberId)
         {
             lock (memberFileLock)
             {
-                string path = Path.Combine(
-                    Application.StartupPath,
-                    "member.csv");
+                string path = Path.Combine(Application.StartupPath, "member.csv");
 
                 if (!File.Exists(path))
                     return false;
 
-                foreach (string line in
-                    File.ReadAllLines(path, Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
@@ -1521,36 +1129,54 @@ namespace SushiKioskAdmin
                     if (parts.Length < 7)
                         continue;
 
-                    if (int.TryParse(
-                        parts[0].Trim(),
-                        out int id) &&
-                        id == memberId)
-                    {
+                    if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
                         return true;
-                    }
                 }
 
                 return false;
             }
         }
 
-        // =========================================================
-        // [추가] 앱 예약 포인트 계산
-        // =========================================================
+        private int GetMemberPoint(int memberId)
+        {
+            lock (memberFileLock)
+            {
+                string path = Path.Combine(Application.StartupPath, "member.csv");
+
+                if (!File.Exists(path))
+                    return 0;
+
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    string[] parts = line.Split(',');
+
+                    if (parts.Length < 7)
+                        continue;
+
+                    if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                    {
+                        int.TryParse(parts[4].Trim(), out int point);
+                        return point;
+                    }
+                }
+
+                return 0;
+            }
+        }
 
         private int GetReservedPoint(int memberId)
         {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_payments.csv");
+            string path = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
 
             if (!File.Exists(path))
                 return 0;
 
             int reserved = 0;
 
-            foreach (string line in
-                File.ReadAllLines(path, Encoding.UTF8))
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
@@ -1560,20 +1186,11 @@ namespace SushiKioskAdmin
                 if (parts.Length < 5)
                     continue;
 
-                if (!int.TryParse(
-                    parts[1].Trim(),
-                    out int savedMemberId))
+                if (!int.TryParse(parts[1].Trim(), out int savedMemberId) || savedMemberId != memberId)
                     continue;
 
-                if (savedMemberId != memberId)
-                    continue;
-
-                if (int.TryParse(
-                    parts[2].Trim(),
-                    out int usedPoint))
-                {
+                if (int.TryParse(parts[2].Trim(), out int usedPoint))
                     reserved += usedPoint;
-                }
             }
 
             return reserved;
@@ -1581,39 +1198,66 @@ namespace SushiKioskAdmin
 
         private int GetAvailableMemberPoint(int memberId)
         {
-            int currentPoint =
-                GetMemberPoint(memberId);
-
-            int reservedPoint =
-                GetReservedPoint(memberId);
-
-            int available =
-                currentPoint - reservedPoint;
-
+            int available = GetMemberPoint(memberId) - GetReservedPoint(memberId);
             return Math.Max(0, available);
         }
 
+        private bool UpdateMemberPoint(int memberId, int usedPoint, int earnedPoint)
+        {
+            lock (memberFileLock)
+            {
+                string path = Path.Combine(Application.StartupPath, "member.csv");
+
+                if (!File.Exists(path))
+                    return false;
+
+                string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (string.IsNullOrWhiteSpace(lines[i]))
+                        continue;
+
+                    string[] parts = lines[i].Split(',');
+
+                    if (parts.Length < 7)
+                        continue;
+
+                    if (!int.TryParse(parts[0].Trim(), out int id) || id != memberId)
+                        continue;
+
+                    int.TryParse(parts[4].Trim(), out int currentPoint);
+
+                    if (usedPoint < 0 || usedPoint > currentPoint)
+                        return false;
+
+                    parts[4] = (currentPoint - usedPoint + earnedPoint).ToString();
+                    lines[i] = string.Join(",", parts);
+
+                    File.WriteAllLines(path, lines, new UTF8Encoding(false));
+                    return true;
+                }
+
+                return false;
+            }
+        }
+
         // =========================================================
-        // [추가] 테이블 주문 총액
+        // 주문 조회 / Identifier
         // =========================================================
 
-        private bool TryGetTableOrderTotal(
-            string tablePrefix,
-            out decimal total)
+        private bool TryGetTableOrderTotal(string tablePrefix, out decimal total)
         {
             total = 0;
 
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_orders_realtime.csv");
+            string path = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
 
             if (!File.Exists(path))
                 return false;
 
             bool found = false;
 
-            foreach (string line in
-                File.ReadAllLines(path, Encoding.UTF8))
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
@@ -1623,18 +1267,13 @@ namespace SushiKioskAdmin
                 if (parts.Length < 6)
                     continue;
 
-                if (!parts[0].Trim().StartsWith(
-                    tablePrefix,
-                    StringComparison.OrdinalIgnoreCase))
+                if (!parts[0].Trim().StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (parts[1].Trim() != "키오스크" ||
-                    parts[2].Trim() != "매장")
+                if (parts[1].Trim() != "키오스크" || parts[2].Trim() != "매장")
                     continue;
 
-                if (decimal.TryParse(
-                    parts[4].Trim(),
-                    out decimal amount))
+                if (decimal.TryParse(parts[4].Trim(), out decimal amount))
                 {
                     total += amount;
                     found = true;
@@ -1644,9 +1283,36 @@ namespace SushiKioskAdmin
             return found;
         }
 
-        // =========================================================
-        // Identifier 검사
-        // =========================================================
+        private bool GetRealtimeOrderInfo(string identifier, out string orderType, out decimal totalAmount)
+        {
+            orderType = "";
+            totalAmount = 0;
+
+            string path = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+
+            if (!File.Exists(path))
+                return false;
+
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] parts = line.Split(',');
+
+                if (parts.Length < 6)
+                    continue;
+
+                if (!parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                orderType = parts[2].Trim();
+                decimal.TryParse(parts[4].Trim(), out totalAmount);
+                return true;
+            }
+
+            return false;
+        }
 
         private bool OrderIdentifierExists(string identifier)
         {
@@ -1659,28 +1325,20 @@ namespace SushiKioskAdmin
 
             foreach (string file in files)
             {
-                string path = Path.Combine(
-                    Application.StartupPath,
-                    file);
+                string path = Path.Combine(Application.StartupPath, file);
 
                 if (!File.Exists(path))
                     continue;
 
-                foreach (string line in
-                    File.ReadAllLines(path, Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
 
                     string[] parts = line.Split(',');
 
-                    if (parts.Length > 0 &&
-                        parts[0].Trim().Equals(
-                            identifier,
-                            StringComparison.OrdinalIgnoreCase))
-                    {
+                    if (parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                         return true;
-                    }
                 }
             }
 
@@ -1689,43 +1347,92 @@ namespace SushiKioskAdmin
 
         private bool SalesIdentifierExists(string identifier)
         {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_sales_history.csv");
+            string path = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
 
             if (!File.Exists(path))
                 return false;
 
-            foreach (string line in
-                File.ReadAllLines(path, Encoding.UTF8))
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 string[] parts = line.Split(',');
 
-                if (parts.Length > 0 &&
-                    parts[0].Trim().Equals(
-                        identifier,
-                        StringComparison.OrdinalIgnoreCase))
+                if (parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                     return true;
             }
 
             return false;
         }
 
-        private bool IsValidKioskTakeoutIdentifier(
-            string identifier)
+        private bool IsValidKioskTableOrderIdentifier(string identifier)
         {
-            return Regex.IsMatch(
-                identifier ?? "",
-                @"^K-\d{8}-\d{3,}$",
-                RegexOptions.IgnoreCase);
+            return Regex.IsMatch(identifier ?? "", @"^T\d{2}-\d{2,}$", RegexOptions.IgnoreCase);
+        }
+
+        private bool IsValidKioskTakeoutIdentifier(string identifier)
+        {
+            return Regex.IsMatch(identifier ?? "", @"^K-\d{8}-\d{3,}$", RegexOptions.IgnoreCase);
+        }
+
+        private bool IsValidAppOrderIdentifier(string identifier)
+        {
+            return Regex.IsMatch(identifier ?? "", @"^ORD-\d{8}-APP\d+$", RegexOptions.IgnoreCase);
+        }
+
+        private string GetTablePrefix(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+                return null;
+
+            Match match = Regex.Match(identifier, @"^(T\d{2})$", RegexOptions.IgnoreCase);
+
+            if (!match.Success)
+                return null;
+
+            return match.Groups[1].Value.ToUpper() + "-";
         }
 
         // =========================================================
-        // CSV Helper
+        // CSV 처리
         // =========================================================
+
+        private void AppendCsvLinesSafe(string path, IEnumerable<string> lines)
+        {
+            if (lines == null)
+                return;
+
+            List<string> lineList = lines.Where(line => line != null).ToList();
+
+            if (lineList.Count == 0)
+                return;
+
+            bool needsNewLine = false;
+
+            if (File.Exists(path))
+            {
+                using (FileStream readStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    if (readStream.Length > 0)
+                    {
+                        readStream.Seek(-1, SeekOrigin.End);
+                        int lastByte = readStream.ReadByte();
+                        needsNewLine = lastByte != '\n' && lastByte != '\r';
+                    }
+                }
+            }
+
+            using (FileStream writeStream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read))
+            using (StreamWriter writer = new StreamWriter(writeStream, new UTF8Encoding(false)))
+            {
+                if (needsNewLine)
+                    writer.WriteLine();
+
+                foreach (string line in lineList)
+                    writer.WriteLine(line);
+            }
+        }
 
         private int GenerateNextMemberId(string[] lines)
         {
@@ -1738,324 +1445,23 @@ namespace SushiKioskAdmin
 
                 string[] parts = line.Split(',');
 
-                if (parts.Length > 0 &&
-                    int.TryParse(
-                        parts[0].Trim(),
-                        out int id) &&
-                    id > max)
-                {
+                if (parts.Length > 0 && int.TryParse(parts[0].Trim(), out int id) && id > max)
                     max = id;
-                }
             }
 
             return max + 1;
         }
 
-        private void SaveRejectedOrder(
-            string identifier,
-            string orderType)
-        {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_rejections.csv");
-
-            string date =
-                DateTime.Now.ToString(
-                    "yyyy-MM-dd HH:mm:ss");
-
-            File.AppendAllLines(
-                path,
-                new[]
-                {
-                    $"{identifier},{date},앱,{orderType}"
-                },
-                new UTF8Encoding(false));
-        }
-
-        private void SaveAppPayment(
-            string identifier,
-            int memberId,
-            int usedPoint,
-            int earnedPoint,
-            string paymentMethod)
-        {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_payments.csv");
-
-            File.AppendAllLines(
-                path,
-                new[]
-                {
-                    $"{identifier},{memberId},{usedPoint}," +
-                    $"{earnedPoint},{paymentMethod}"
-                },
-                new UTF8Encoding(false));
-        }
-
-        private bool GetAppPayment(
-            string identifier,
-            out int memberId,
-            out int usedPoint,
-            out int earnedPoint,
-            out string paymentMethod)
-        {
-            memberId = 0;
-            usedPoint = 0;
-            earnedPoint = 0;
-            paymentMethod = "앱선결제";
-
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_payments.csv");
-
-            if (!File.Exists(path))
-                return false;
-
-            foreach (string line in
-                File.ReadAllLines(path, Encoding.UTF8))
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                string[] parts = line.Split(',');
-
-                if (parts.Length < 5)
-                    continue;
-
-                if (!parts[0].Trim().Equals(
-                    identifier,
-                    StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                int.TryParse(parts[1], out memberId);
-                int.TryParse(parts[2], out usedPoint);
-                int.TryParse(parts[3], out earnedPoint);
-
-                paymentMethod = parts[4].Trim();
-
-                return true;
-            }
-
-            return false;
-        }
-
-        private void RemoveAppPayment(string identifier)
-        {
-            RemoveCsvRows(
-                "susi_order_payments.csv",
-                identifier);
-        }
-
-        private void RemoveOrderItems(string identifier)
-        {
-            RemoveCsvRows(
-                "susi_order_items.csv",
-                identifier);
-        }
-
-        private void RemoveRealtimeOrder(string identifier)
-        {
-            RemoveCsvRows(
-                "susi_orders_realtime.csv",
-                identifier);
-        }
-
-        private void RemoveCsvRows(
-            string fileName,
-            string identifier)
-        {
-            string path = Path.Combine(
-                Application.StartupPath,
-                fileName);
-
-            if (!File.Exists(path))
-                return;
-
-            List<string> lines =
-                File.ReadAllLines(
-                    path,
-                    Encoding.UTF8).ToList();
-
-            lines.RemoveAll(line =>
-            {
-                string[] parts = line.Split(',');
-
-                return parts.Length > 0 &&
-                    parts[0].Trim().Equals(
-                        identifier,
-                        StringComparison.OrdinalIgnoreCase);
-            });
-
-            File.WriteAllLines(
-                path,
-                lines,
-                new UTF8Encoding(false));
-        }
-
-        private bool GetRealtimeOrderInfo(
-            string identifier,
-            out string orderType,
-            out decimal totalAmount)
-        {
-            orderType = "";
-            totalAmount = 0;
-
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_orders_realtime.csv");
-
-            if (!File.Exists(path))
-                return false;
-
-            foreach (string line in
-                File.ReadAllLines(path, Encoding.UTF8))
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                    continue;
-
-                string[] parts = line.Split(',');
-
-                if (parts.Length < 6)
-                    continue;
-
-                if (!parts[0].Trim().Equals(
-                    identifier,
-                    StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                orderType = parts[2].Trim();
-
-                decimal.TryParse(
-                    parts[4].Trim(),
-                    out totalAmount);
-
-                return true;
-            }
-
-            return false;
-        }
-
-        private string GetTablePrefix(string identifier)
-        {
-            if (string.IsNullOrWhiteSpace(identifier))
-                return null;
-
-            Match match = Regex.Match(
-                identifier,
-                @"^(T\d{2})$",
-                RegexOptions.IgnoreCase);
-
-            if (!match.Success)
-                return null;
-
-            return match.Groups[1].Value.ToUpper() + "-";
-        }
-
-        private void UpdateTableItemKeyIds(
-            string tablePrefix,
-            string newReceiptNo)
-        {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_items.csv");
-
-            if (!File.Exists(path))
-                return;
-
-            List<string> lines =
-                File.ReadAllLines(
-                    path,
-                    Encoding.UTF8).ToList();
-
-            for (int i = 0; i < lines.Count; i++)
-            {
-                string[] parts = lines[i].Split(',');
-
-                if (parts.Length < 1)
-                    continue;
-
-                if (parts[0].Trim().StartsWith(
-                    tablePrefix,
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    parts[0] = newReceiptNo;
-                    lines[i] = string.Join(",", parts);
-                }
-            }
-
-            File.WriteAllLines(
-                path,
-                lines,
-                new UTF8Encoding(false));
-        }
-
-        private void UpdateItemKeyId(
-            string oldKeyId,
-            string newReceiptNo)
-        {
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_order_items.csv");
-
-            if (!File.Exists(path))
-                return;
-
-            List<string> lines =
-                File.ReadAllLines(
-                    path,
-                    Encoding.UTF8).ToList();
-
-            for (int i = 0; i < lines.Count; i++)
-            {
-                string[] parts = lines[i].Split(',');
-
-                if (parts.Length < 1)
-                    continue;
-
-                if (parts[0].Trim().Equals(
-                    oldKeyId,
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    parts[0] = newReceiptNo;
-                    lines[i] = string.Join(",", parts);
-                }
-            }
-
-            File.WriteAllLines(
-                path,
-                lines,
-                new UTF8Encoding(false));
-        }
-
-        private void RemoveSalesHistory(string receiptNo)
-        {
-            lock (orderFileLock)
-            {
-                RemoveCsvRows(
-                    "susi_sales_history.csv",
-                    receiptNo);
-            }
-        }
-
         private string GenerateNewReceiptNumber()
         {
-            string today =
-                DateTime.Now.ToString("yyyyMMdd");
-
-            string prefix =
-                $"ORD-{today}-";
-
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_sales_history.csv");
-
+            string today = DateTime.Now.ToString("yyyyMMdd");
+            string prefix = $"ORD-{today}-";
+            string path = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
             int max = 0;
 
             if (File.Exists(path))
             {
-                foreach (string line in
-                    File.ReadAllLines(path, Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
@@ -2065,144 +1471,177 @@ namespace SushiKioskAdmin
                     if (parts.Length < 1)
                         continue;
 
-                    string receipt =
-                        parts[0].Trim();
+                    string receipt = parts[0].Trim();
 
-                    if (!receipt.StartsWith(
-                        prefix,
-                        StringComparison.OrdinalIgnoreCase))
+                    if (!receipt.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    string sequence =
-                        receipt.Substring(prefix.Length);
+                    string sequence = receipt.Substring(prefix.Length);
 
-                    if (int.TryParse(
-                        sequence,
-                        out int number) &&
-                        number > max)
-                    {
+                    if (int.TryParse(sequence, out int number) && number > max)
                         max = number;
-                    }
                 }
             }
 
             return $"{prefix}{max + 1:D3}";
         }
 
-        // =========================================================
-        // 회원 포인트
-        // =========================================================
-
-        private int GetMemberPoint(int memberId)
+        private void SaveRejectedOrder(string identifier, string orderType)
         {
-            lock (memberFileLock)
-            {
-                string path = Path.Combine(
-                    Application.StartupPath,
-                    "member.csv");
+            string path = Path.Combine(Application.StartupPath, "susi_order_rejections.csv");
+            string date = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
-                if (!File.Exists(path))
-                    return 0;
-
-                foreach (string line in
-                    File.ReadAllLines(path, Encoding.UTF8))
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
-
-                    string[] parts = line.Split(',');
-
-                    if (parts.Length < 7)
-                        continue;
-
-                    if (int.TryParse(
-                        parts[0].Trim(),
-                        out int id) &&
-                        id == memberId)
-                    {
-                        int.TryParse(
-                            parts[4].Trim(),
-                            out int point);
-
-                        return point;
-                    }
-                }
-
-                return 0;
-            }
+            AppendCsvLinesSafe(path, new[] { $"{identifier},{date},앱,{orderType}" });
         }
 
-        private bool UpdateMemberPoint(
-            int memberId,
-            int usedPoint,
-            int earnedPoint)
+        private void SaveAppPayment(string identifier, int memberId, int usedPoint, int earnedPoint, string paymentMethod)
         {
-            lock (memberFileLock)
+            string path = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
+            AppendCsvLinesSafe(path, new[] { $"{identifier},{memberId},{usedPoint},{earnedPoint},{paymentMethod}" });
+        }
+
+        private bool GetAppPayment(string identifier, out int memberId, out int usedPoint, out int earnedPoint, out string paymentMethod)
+        {
+            memberId = 0;
+            usedPoint = 0;
+            earnedPoint = 0;
+            paymentMethod = "앱선결제";
+
+            string path = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
+
+            if (!File.Exists(path))
+                return false;
+
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
             {
-                string path = Path.Combine(
-                    Application.StartupPath,
-                    "member.csv");
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
 
-                if (!File.Exists(path))
-                    return false;
+                string[] parts = line.Split(',');
 
-                string[] lines =
-                    File.ReadAllLines(
-                        path,
-                        Encoding.UTF8);
+                if (parts.Length < 5)
+                    continue;
 
-                bool found = false;
+                if (!parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-                for (int i = 0; i < lines.Length; i++)
-                {
-                    if (string.IsNullOrWhiteSpace(lines[i]))
-                        continue;
-
-                    string[] parts =
-                        lines[i].Split(',');
-
-                    if (parts.Length < 7)
-                        continue;
-
-                    if (!int.TryParse(
-                        parts[0].Trim(),
-                        out int id) ||
-                        id != memberId)
-                        continue;
-
-                    int.TryParse(
-                        parts[4].Trim(),
-                        out int currentPoint);
-
-                    if (usedPoint < 0 ||
-                        usedPoint > currentPoint)
-                        return false;
-
-                    int newPoint =
-                        currentPoint -
-                        usedPoint +
-                        earnedPoint;
-
-                    parts[4] =
-                        newPoint.ToString();
-
-                    lines[i] =
-                        string.Join(",", parts);
-
-                    found = true;
-                    break;
-                }
-
-                if (!found)
-                    return false;
-
-                File.WriteAllLines(
-                    path,
-                    lines,
-                    new UTF8Encoding(false));
-
+                int.TryParse(parts[1].Trim(), out memberId);
+                int.TryParse(parts[2].Trim(), out usedPoint);
+                int.TryParse(parts[3].Trim(), out earnedPoint);
+                paymentMethod = parts[4].Trim();
                 return true;
             }
+
+            return false;
+        }
+
+        private void RemoveAppPayment(string identifier)
+        {
+            RemoveCsvRows("susi_order_payments.csv", identifier);
+        }
+
+        private void RemoveOrderItems(string identifier)
+        {
+            RemoveCsvRows("susi_order_items.csv", identifier);
+        }
+
+        private void RemoveRealtimeOrder(string identifier)
+        {
+            RemoveCsvRows("susi_orders_realtime.csv", identifier);
+        }
+
+        private void RemoveCsvRows(string fileName, string identifier)
+        {
+            string path = Path.Combine(Application.StartupPath, fileName);
+
+            if (!File.Exists(path))
+                return;
+
+            List<string> lines = File.ReadAllLines(path, Encoding.UTF8).ToList();
+
+            lines.RemoveAll(line =>
+            {
+                string[] parts = line.Split(',');
+                return parts.Length > 0 && parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase);
+            });
+
+            File.WriteAllLines(path, lines, new UTF8Encoding(false));
+        }
+
+        private void UpdateTableItemKeyIds(string tablePrefix, string newReceiptNo)
+        {
+            string path = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            if (!File.Exists(path))
+                return;
+
+            List<string> lines = File.ReadAllLines(path, Encoding.UTF8).ToList();
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string[] parts = lines[i].Split(',');
+
+                if (parts.Length < 1)
+                    continue;
+
+                if (parts[0].Trim().StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    parts[0] = newReceiptNo;
+                    lines[i] = string.Join(",", parts);
+                }
+            }
+
+            File.WriteAllLines(path, lines, new UTF8Encoding(false));
+        }
+
+        private void UpdateItemKeyId(string oldKeyId, string newReceiptNo)
+        {
+            string path = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            if (!File.Exists(path))
+                return;
+
+            List<string> lines = File.ReadAllLines(path, Encoding.UTF8).ToList();
+
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string[] parts = lines[i].Split(',');
+
+                if (parts.Length < 1)
+                    continue;
+
+                if (parts[0].Trim().Equals(oldKeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    parts[0] = newReceiptNo;
+                    lines[i] = string.Join(",", parts);
+                }
+            }
+
+            File.WriteAllLines(path, lines, new UTF8Encoding(false));
+        }
+
+        // =========================================================
+        // 파일 백업 / 복구
+        // =========================================================
+
+        private FileSnapshot CreateSnapshot(string path)
+        {
+            return new FileSnapshot
+            {
+                Exists = File.Exists(path),
+                Data = File.Exists(path) ? File.ReadAllBytes(path) : null
+            };
+        }
+
+        private void RestoreSnapshot(string path, FileSnapshot snapshot)
+        {
+            if (snapshot == null)
+                return;
+
+            if (snapshot.Exists)
+                File.WriteAllBytes(path, snapshot.Data ?? new byte[0]);
+            else if (File.Exists(path))
+                File.Delete(path);
         }
 
         // =========================================================
@@ -2231,13 +1670,7 @@ namespace SushiKioskAdmin
             return ProcessAppReject(packet);
         }
 
-        public string CompleteKioskPayment(
-            string identifier,
-            int memberId,
-            decimal originalAmount,
-            int usedPoint,
-            decimal totalAmount,
-            string paymentMethod)
+        public string CompleteKioskPayment(string identifier, int memberId, decimal originalAmount, int usedPoint, decimal totalAmount, string paymentMethod)
         {
             JObject packet = new JObject
             {
@@ -2254,29 +1687,23 @@ namespace SushiKioskAdmin
         }
 
         // =========================================================
-        // 알림
+        // 신규 주문 알림
         // =========================================================
 
         public void UpdateOrderNotice()
         {
             if (InvokeRequired)
             {
-                BeginInvoke(
-                    new Action(UpdateOrderNotice));
-
+                BeginInvoke(new Action(UpdateOrderNotice));
                 return;
             }
 
-            string path = Path.Combine(
-                Application.StartupPath,
-                "susi_orders_realtime.csv");
-
+            string path = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
             int waitingCount = 0;
 
             if (File.Exists(path))
             {
-                foreach (string line in
-                    File.ReadAllLines(path, Encoding.UTF8))
+                foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
@@ -2286,17 +1713,8 @@ namespace SushiKioskAdmin
                     if (parts.Length < 6)
                         continue;
 
-                    string source =
-                        parts[1].Trim();
-
-                    string status =
-                        parts[5].Trim();
-
-                    if (source == "앱" &&
-                        status == "접수 대기")
-                    {
+                    if (parts[1].Trim() == "앱" && parts[5].Trim() == "접수 대기")
                         waitingCount++;
-                    }
                 }
             }
 
@@ -2305,11 +1723,26 @@ namespace SushiKioskAdmin
 
         public void UpdateNotice(int waitingCount)
         {
-            lblNotice.Text =
-                $"신규 주문 [{waitingCount}건] 대기 중";
+            lblNotice.Text = $"신규 주문 [{waitingCount}건] 대기 중";
+            lblNotice.ForeColor = Color.Yellow;
+        }
 
-            lblNotice.ForeColor =
-                Color.Yellow;
+        private void RefreshOrderBoard()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(RefreshOrderBoard));
+                return;
+            }
+
+            foreach (Control control in pnlMainContainer.Controls)
+            {
+                if (control is UcOrderBoard orderBoard)
+                {
+                    orderBoard.RefreshOrders();
+                    break;
+                }
+            }
         }
 
         // =========================================================
@@ -2322,8 +1755,7 @@ namespace SushiKioskAdmin
             {
                 ["Status"] = "FAIL",
                 ["Message"] = message
-            }.ToString(
-                Newtonsoft.Json.Formatting.None);
+            }.ToString(Newtonsoft.Json.Formatting.None);
         }
 
         private string Success(string message)
@@ -2332,35 +1764,26 @@ namespace SushiKioskAdmin
             {
                 ["Status"] = "SUCCESS",
                 ["Message"] = message
-            }.ToString(
-                Newtonsoft.Json.Formatting.None);
+            }.ToString(Newtonsoft.Json.Formatting.None);
         }
 
         // =========================================================
         // Form
         // =========================================================
 
-        protected override void OnFormClosed(
-            FormClosedEventArgs e)
+        protected override void OnFormClosed(FormClosedEventArgs e)
         {
             isServerRunning = false;
             server?.Stop();
-
             base.OnFormClosed(e);
         }
 
-        private void ShowView(
-            UserControl view,
-            Button clickedButton)
+        private void ShowView(UserControl view, Button clickedButton)
         {
             pnlMainContainer.Controls.Clear();
-
             view.Dock = DockStyle.Fill;
-
             pnlMainContainer.Controls.Add(view);
-
             view.BringToFront();
-
             HighlightButton(clickedButton);
         }
 
@@ -2368,91 +1791,31 @@ namespace SushiKioskAdmin
         {
             if (currentSelectedButton != null)
             {
-                currentSelectedButton.BackColor =
-                    Color.FromArgb(45, 45, 48);
-
-                currentSelectedButton
-                    .FlatAppearance
-                    .MouseOverBackColor =
-                    Color.FromArgb(60, 60, 65);
+                currentSelectedButton.BackColor = Color.FromArgb(45, 45, 48);
+                currentSelectedButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(60, 60, 65);
             }
 
             currentSelectedButton = btn;
 
             if (currentSelectedButton != null)
             {
-                Color activeColor =
-                    Color.FromArgb(0, 122, 204);
-
-                currentSelectedButton.BackColor =
-                    activeColor;
-
-                currentSelectedButton
-                    .FlatAppearance
-                    .MouseOverBackColor =
-                    activeColor;
+                Color activeColor = Color.FromArgb(0, 122, 204);
+                currentSelectedButton.BackColor = activeColor;
+                currentSelectedButton.FlatAppearance.MouseOverBackColor = activeColor;
             }
         }
 
-        private void btnNavOrder_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcOrderBoard(),
-                (Button)sender);
+        private void btnNavOrder_Click(object sender, EventArgs e) => ShowView(new UcOrderBoard(), (Button)sender);
+        private void btnNavTable_Click(object sender, EventArgs e) => ShowView(new UcTableMonitor(), (Button)sender);
+        private void btnNavMenu_Click(object sender, EventArgs e) => ShowView(new UcMenuManagement(), (Button)sender);
+        private void btnNavHistory_Click(object sender, EventArgs e) => ShowView(new UcOrderHistory(), (Button)sender);
+        private void btnNavUser_Click(object sender, EventArgs e) => ShowView(new UcUserManagement(), (Button)sender);
+        private void btnNavStock_Click(object sender, EventArgs e) => ShowView(new UcStockManagement(), (Button)sender);
+        private void btnNavReport_Click(object sender, EventArgs e) => ShowView(new UcSalesReport(), (Button)sender);
 
-        private void btnNavTable_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcTableMonitor(),
-                (Button)sender);
-
-        private void btnNavMenu_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcMenuManagement(),
-                (Button)sender);
-
-        private void btnNavHistory_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcOrderHistory(),
-                (Button)sender);
-
-        private void btnNavUser_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcUserManagement(),
-                (Button)sender);
-
-        private void btnNavStock_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcStockManagement(),
-                (Button)sender);
-
-        private void btnNavReport_Click(
-            object sender,
-            EventArgs e)
-            => ShowView(
-                new UcSalesReport(),
-                (Button)sender);
-
-        private void btnExit_Click(
-            object sender,
-            EventArgs e)
+        private void btnExit_Click(object sender, EventArgs e)
         {
-            DialogResult result =
-                MessageBox.Show(
-                    "관리자 시스템을 종료하시겠습니까?",
-                    "시스템 종료",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
+            DialogResult result = MessageBox.Show("관리자 시스템을 종료하시겠습니까?", "시스템 종료", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (result == DialogResult.Yes)
                 Application.Exit();
