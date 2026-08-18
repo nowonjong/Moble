@@ -27,6 +27,8 @@ public sealed class PointUseDialog : Form
         pointInput.Size = new Size(305, 30);
         pointInput.Minimum = 0;
         pointInput.Maximum = maximum;
+        // 뉴머릭업다운 단위 10으로 조정
+        pointInput.Increment = 10;
         pointInput.ThousandsSeparator = true;
 
         Button ok = new()

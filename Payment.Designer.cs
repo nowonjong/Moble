@@ -194,7 +194,7 @@
             roundedPanel1.Controls.Add(btn_allDelete);
             roundedPanel1.Controls.Add(btn_back);
             roundedPanel1.Controls.Add(label5);
-            roundedPanel1.Location = new Point(41, 41);
+            roundedPanel1.Location = new Point(41, 12);
             roundedPanel1.Name = "roundedPanel1";
             roundedPanel1.RoundBottomLeft = true;
             roundedPanel1.RoundBottomRight = true;
@@ -209,10 +209,10 @@
             // axWindowsMediaPlayer1
             // 
             axWindowsMediaPlayer1.Enabled = true;
-            axWindowsMediaPlayer1.Location = new Point(430, 153);
+            axWindowsMediaPlayer1.Location = new Point(430, 126);
             axWindowsMediaPlayer1.Name = "axWindowsMediaPlayer1";
             axWindowsMediaPlayer1.OcxState = (AxHost.State)resources.GetObject("axWindowsMediaPlayer1.OcxState");
-            axWindowsMediaPlayer1.Size = new Size(479, 320);
+            axWindowsMediaPlayer1.Size = new Size(488, 338);
             axWindowsMediaPlayer1.TabIndex = 27;
             // 
             // Payment
