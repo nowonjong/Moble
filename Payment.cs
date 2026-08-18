@@ -12,6 +12,8 @@ namespace Kiosk
 {
     public partial class Payment : Form
     {
+        private readonly Pop_MemberNum? memberForm;
+        private bool paymentRunning;
         // 다국어 텍스트 정의 (0: 영어, 1: 일본어, 2: 한국어)
         private readonly string[] label4Texts = { "Please select a payment method!", "お支払い方法を選択してください！", "결제 방식을 선택해주세요 !" };
         private readonly string[] label2Texts = { "Payment Method", "お支払い方法", "결제 방식" };
@@ -46,9 +48,21 @@ namespace Kiosk
         private Button btn_savepoint;
         private Button btn_receive;
 
-        public Payment()
+        public Payment() : this(null)
         {
+        }
+
+        public Payment(Pop_MemberNum? memberForm)
+        {
+            this.memberForm = memberForm;
             InitializeComponent();
+
+            btn_card.Click += async (s, e) => await ProcessPaymentAsync("신용카드");
+            btn_naverPay.Click += async (s, e) => await ProcessPaymentAsync("네이버페이");
+            btn_KakaoPay.Click += async (s, e) => await ProcessPaymentAsync("카카오페이");
+            btn_SamsungPay.Click += async (s, e) => await ProcessPaymentAsync("삼성페이");
+            btn_coupon.Click += async (s, e) => await ProcessPaymentAsync("쿠폰/상품권");
+            btn_allDelete.Click += CancelAll_Click;
 
             // 언어 변경 이벤트 구독
             LanguageManager.LanguageChanged += ApplyLanguage;
@@ -61,6 +75,7 @@ namespace Kiosk
 
             // 최초 1회 현재 언어 적용
             ApplyLanguage();
+            label1.Text = $"결제 대상 금액: {KioskSession.OriginalAmount:N0}원";
         }
 
         private void ApplyLanguage()
@@ -102,9 +117,114 @@ namespace Kiosk
 
         private void btn_back_Click(object sender, EventArgs e)
         {
-            Pop_MemberNum memeber = new Pop_MemberNum();
+            Pop_MemberNum memeber = memberForm ?? new Pop_MemberNum();
             memeber.Show();
             this.Hide();
+        }
+
+        private async Task ProcessPaymentAsync(string paymentMethod)
+        {
+            if (paymentRunning)
+                return;
+            if (!KioskSession.HasOrders)
+            {
+                MessageBox.Show("결제할 주문이 없습니다.");
+                return;
+            }
+
+            int usedPoint = 0;
+            MemberResponse? member = KioskSession.Member;
+            if (member != null && member.Point > 0)
+            {
+                using PointUseDialog dialog = new(member.Point, KioskSession.OriginalAmount);
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+                usedPoint = dialog.UsedPoint;
+            }
+
+            int finalAmount = KioskSession.OriginalAmount - usedPoint;
+            DialogResult confirmed = MessageBox.Show(
+                $"{paymentMethod} 결제를 완료했습니까?\n\n결제 금액: {finalAmount:N0}원",
+                "결제 확인",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (confirmed != DialogResult.Yes)
+                return;
+
+            paymentRunning = true;
+            SetPaymentButtonsEnabled(false);
+            try
+            {
+                PaymentResponse response = await KioskSession.Server.CompletePaymentAsync(
+                    KioskSession.GetPaymentIdentifier(),
+                    member?.MemberId ?? 0,
+                    KioskSession.OriginalAmount,
+                    usedPoint,
+                    paymentMethod);
+
+                if (!response.IsSuccess)
+                {
+                    MessageBox.Show(response.Message, "결제 처리 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                MessageBox.Show(
+                    $"결제가 완료되었습니다.\n\n영수증 번호: {response.ReceiptNo}\n결제 금액: {response.TotalAmount:N0}원\n적립 포인트: {response.EarnedPoint:N0}P",
+                    "결제 완료",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+
+                KioskSession.Reset();
+                ReturnToStart();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "결제 결과 전송 중 오류가 발생했습니다. 관리자에서 결제 처리 여부를 반드시 확인해주세요.\n\n" + ex.Message,
+                    "결제 통신 오류",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                paymentRunning = false;
+                if (!IsDisposed)
+                    SetPaymentButtonsEnabled(true);
+            }
+        }
+
+        private void CancelAll_Click(object? sender, EventArgs e)
+        {
+            if (MessageBox.Show("현재 주문을 모두 취소하고 처음 화면으로 이동할까요?", "전체 취소",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+
+            KioskSession.Reset();
+            ReturnToStart();
+        }
+
+        private void SetPaymentButtonsEnabled(bool enabled)
+        {
+            btn_card.Enabled = enabled;
+            btn_naverPay.Enabled = enabled;
+            btn_KakaoPay.Enabled = enabled;
+            btn_SamsungPay.Enabled = enabled;
+            btn_coupon.Enabled = enabled;
+            btn_allDelete.Enabled = enabled;
+            btn_back.Enabled = enabled;
+        }
+
+        private void ReturnToStart()
+        {
+            Firstform start = Application.OpenForms.OfType<Firstform>().FirstOrDefault() ?? new Firstform();
+            start.Show();
+            start.BringToFront();
+
+            foreach (Form form in Application.OpenForms.Cast<Form>().ToArray())
+            {
+                if (!ReferenceEquals(form, start))
+                    form.Close();
+            }
         }
     }
 }

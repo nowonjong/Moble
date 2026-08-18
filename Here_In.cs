@@ -33,6 +33,7 @@ namespace Kiosk
 
         /// 각 테이블(1~34번)의 선택 상태를 기록하는 배열입니다.
         bool[] table_state = new bool[35];
+        private int? selectedTableNumber;
 
         /// <summary>
         /// 테이블 선택 알림 메시지의 다국어 템플릿입니다.
@@ -78,21 +79,23 @@ namespace Kiosk
         /// </summary>
         /// <param name="sender">클릭 이벤트를 발생시킨 Button 객체입니다.</param>
         /// <param name="e">이벤트 데이터가 포함된 객체입니다.</param>
-        private void Here_In_Button_Click(object sender, EventArgs e)
+        private void Here_In_Button_Click(object? sender, EventArgs e)
         {
-            Button clicked_Button = sender as Button;
+            Button? clicked_Button = sender as Button;
             if (clicked_Button == null) return;
 
             // 버튼의 Tag에 저장해둔 고유 인덱스 번호(1~34) 가져오기
             int btn_Index = (int)clicked_Button.Tag;
 
+            foreach (Button tableButton in buttons)
+                tableButton.BackColor = SystemColors.Control;
+
             // 해당 버튼의 상태를 토글(클릭할 때마다 true/false 전환) 또는 true로 고정
             // 여기서는 클릭 시 true로 변경하고 이미지를 바꾸는 예시입니다.
-            if (table_state[btn_Index] = true)
-            {
-                clicked_Button.BackColor = Color.LightSteelBlue;
-                btn_choice.BackColor = Color.LightSteelBlue;
-            }
+            table_state[btn_Index] = true;
+            clicked_Button.BackColor = Color.LightSteelBlue;
+            btn_choice.BackColor = Color.LightSteelBlue;
+            selectedTableNumber = btn_Index;
             // 현재 언어 인덱스에 맞는 포맷을 가져와 바인딩
             int lang = LanguageManager.CurrentLanguageIndex;
             string message = string.Format(tableSelectFormats[lang], btn_Index, table_state[btn_Index]);
@@ -136,6 +139,13 @@ namespace Kiosk
         private void btn_choice_Click_1(object sender, EventArgs e)
         {
             // 테이블 선택 완료 후 메뉴 주문 화면(MenuForm) 표시 및 현재 창 숨김
+            if (selectedTableNumber is null)
+            {
+                MessageBox.Show("테이블을 먼저 선택해주세요.");
+                return;
+            }
+
+            KioskSession.BeginTableOrder(selectedTableNumber.Value);
             MenuForm menuForm = new MenuForm();
             menuForm.Show();
             this.Hide();

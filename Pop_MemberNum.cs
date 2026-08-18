@@ -13,16 +13,30 @@ namespace Kiosk
 {
     public partial class Pop_MemberNum : BaseLanguageForm
     {
-        public Pop_MemberNum()
+        private readonly MenuForm? menuForm;
+        private bool memberLookupRunning;
+
+        public Pop_MemberNum() : this(null)
         {
+        }
+
+        public Pop_MemberNum(MenuForm? menuForm)
+        {
+            this.menuForm = menuForm;
             InitializeComponent();
             pnlStamp.Hide();
             pnl_Pop_Membership.Hide();
+            label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+            label22.Text = "-";
+            label24.Text = "0P";
+            button32.Click += LookupMemberByPhone_Click;
+            button29.Click += MemberCardLookup_Click;
         }
 
         private void button1_Click(object sender, EventArgs e)
         {
-            Payment payform = new Payment();
+            KioskSession.Member = null;
+            Payment payform = new Payment(this);
             payform.Show();
             this.Hide();
         }
@@ -58,7 +72,7 @@ namespace Kiosk
 
         private readonly string[] del1Texts = { "Close", "閉じる", "닫기" };
         private readonly string[] del2Texts = { "Close", "閉じる", "닫기" };
-        private readonly string[] button32Texts = { "Cancel", "キャンセル", "취소" };
+        private readonly string[] button32Texts = { "1. Search", "1. 照会", "1. 조회" };
         private readonly string[] searchTexts = { "1. Search", "1. 照会", "1. 조회" };
         private readonly string[] savepointTexts = { "Earn Points", "ポイント積立", "포인트 적립" };
         private readonly string[] saveTexts = { "Earn", "積立", "적립" };
@@ -147,7 +161,7 @@ namespace Kiosk
             }
         }
 
-        private void NumButton_Click(object sender, EventArgs e)
+        private void NumButton_Click(object? sender, EventArgs e)
         {
             if (sender is Button btn)
             {
@@ -319,6 +333,60 @@ namespace Kiosk
 
         }
 
+        private async void LookupMemberByPhone_Click(object? sender, EventArgs e)
+        {
+            if (memberLookupRunning)
+                return;
+
+            string phone = lb_cusNum.Text.Trim();
+            if (phone.Length != 13)
+            {
+                MessageBox.Show("전화번호 11자리를 모두 입력해주세요. (예: 010-1111-2222)");
+                return;
+            }
+
+            memberLookupRunning = true;
+            button32.Enabled = false;
+            try
+            {
+                MemberResponse response = await KioskSession.Server.GetMemberAsync(phone);
+                if (!response.IsSuccess)
+                {
+                    KioskSession.Member = null;
+                    label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+                    label22.Text = "-";
+                    label24.Text = "0P";
+                    MessageBox.Show(response.Message, "회원 조회 실패", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                KioskSession.Member = response;
+                label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+                label22.Text = response.MemberName;
+                label24.Text = response.Point.ToString("N0") + "P";
+                MessageBox.Show($"{response.MemberName} 회원님\n보유 포인트: {response.Point:N0}P", "회원 조회 완료");
+            }
+            catch (Exception ex)
+            {
+                KioskSession.Member = null;
+                MessageBox.Show(ex.Message, "회원 조회 통신 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                memberLookupRunning = false;
+                button32.Enabled = true;
+            }
+        }
+
+        private void MemberCardLookup_Click(object? sender, EventArgs e)
+        {
+            MessageBox.Show(
+                "현재 관리자 통신 규격은 전화번호 조회만 지원합니다. 휴대폰 번호 조회를 이용해주세요.",
+                "회원 조회 안내",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
         protected override void ApplyLanguage()
         {
             int langIndex = LanguageManager.CurrentLanguageIndex;
@@ -369,33 +437,27 @@ namespace Kiosk
 
         private void btn_save_Click(object sender, EventArgs e)
         {
-
-            Payment pay_form = new Payment();
-
-
-
-            pay_form.Show();
-            this.Hide();
-
-            MessageBox.Show("적립되었습니다 ! ");
-
-
+            MemberCardLookup_Click(sender, e);
         }
 
         private void btn_savepoint_Click(object sender, EventArgs e)
         {
-            Payment pay_form = new Payment();
+            if (KioskSession.Member is null)
+            {
+                MessageBox.Show("먼저 전화번호로 회원을 조회해주세요.");
+                return;
+            }
+
+            Payment pay_form = new Payment(this);
 
             pay_form.Show();
             this.Hide();
-
-            MessageBox.Show("적립되었습니다  !");
 
         }
 
         private void btn_back_Click(object sender, EventArgs e)
         {
-            MenuForm mf= new MenuForm();
+            MenuForm mf = menuForm ?? new MenuForm();
             mf.Show();
             this.Hide();
         }
