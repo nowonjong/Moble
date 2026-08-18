@@ -20,6 +20,7 @@ namespace Kiosk
         /// <summary>
         /// Here_In 클래스의 새 인스턴스를 생성하고 구성 요소를 초기화합니다.
         /// </summary>
+
         public Here_In()
         {
             InitializeComponent();

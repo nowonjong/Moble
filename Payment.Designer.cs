@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Payment));
             btn_back = new Button();
             btn_allDelete = new Button();
             btn_KakaoPay = new Button();
@@ -41,7 +42,9 @@
             label3 = new Label();
             btn_coupon = new Button();
             roundedPanel1 = new Kiosk.Controls.RoundedPanel();
+            axWindowsMediaPlayer1 = new AxWMPLib.AxWindowsMediaPlayer();
             roundedPanel1.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)axWindowsMediaPlayer1).BeginInit();
             SuspendLayout();
             // 
             // btn_back
@@ -179,6 +182,7 @@
             roundedPanel1.BorderRadius = 90;
             roundedPanel1.BorderSize = 1F;
             roundedPanel1.BottomBorderRadius = 40;
+            roundedPanel1.Controls.Add(axWindowsMediaPlayer1);
             roundedPanel1.Controls.Add(label4);
             roundedPanel1.Controls.Add(btn_coupon);
             roundedPanel1.Controls.Add(label2);
@@ -190,7 +194,7 @@
             roundedPanel1.Controls.Add(btn_allDelete);
             roundedPanel1.Controls.Add(btn_back);
             roundedPanel1.Controls.Add(label5);
-            roundedPanel1.Location = new Point(140, 41);
+            roundedPanel1.Location = new Point(41, 41);
             roundedPanel1.Name = "roundedPanel1";
             roundedPanel1.RoundBottomLeft = true;
             roundedPanel1.RoundBottomRight = true;
@@ -199,8 +203,17 @@
             roundedPanel1.ShadowColor = Color.FromArgb(60, 0, 0, 0);
             roundedPanel1.ShadowDepth = 8;
             roundedPanel1.ShowShadow = true;
-            roundedPanel1.Size = new Size(470, 572);
+            roundedPanel1.Size = new Size(980, 572);
             roundedPanel1.TabIndex = 26;
+            // 
+            // axWindowsMediaPlayer1
+            // 
+            axWindowsMediaPlayer1.Enabled = true;
+            axWindowsMediaPlayer1.Location = new Point(430, 153);
+            axWindowsMediaPlayer1.Name = "axWindowsMediaPlayer1";
+            axWindowsMediaPlayer1.OcxState = (AxHost.State)resources.GetObject("axWindowsMediaPlayer1.OcxState");
+            axWindowsMediaPlayer1.Size = new Size(479, 320);
+            axWindowsMediaPlayer1.TabIndex = 27;
             // 
             // Payment
             // 
@@ -214,6 +227,7 @@
             Load += Payment_Load;
             roundedPanel1.ResumeLayout(false);
             roundedPanel1.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)axWindowsMediaPlayer1).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -233,5 +247,6 @@
         private Label label3;
         private Button btn_coupon;
         private Controls.RoundedPanel roundedPanel1;
+        private AxWMPLib.AxWindowsMediaPlayer axWindowsMediaPlayer1;
     }
 }

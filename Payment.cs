@@ -1,3 +1,4 @@
+using AxWMPLib;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -56,6 +57,14 @@ namespace Kiosk
         {
             this.memberForm = memberForm;
             InitializeComponent();
+            
+
+            axWindowsMediaPlayer1.URL = System.IO.Path.Combine(Application.StartupPath, "Images", "스시결제.mp4");
+            // 2. 아래 하단 바(컨트롤 레이아웃) 숨기기 ("none"으로 설정 시 영상만 출력)
+            axWindowsMediaPlayer1.uiMode = "none";
+
+            // 3. 무한 반복 재생 설정 ("loop" 모드를 true로 지정)
+            axWindowsMediaPlayer1.settings.setMode("loop", true);
 
             btn_card.Click += async (s, e) => await ProcessPaymentAsync("신용카드");
             btn_naverPay.Click += async (s, e) => await ProcessPaymentAsync("네이버페이");

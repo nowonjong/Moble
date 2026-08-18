@@ -38,11 +38,11 @@ namespace Kiosk
             label3 = new Label();
             btn_allDelete = new Button();
             btn_back = new Button();
-            label22 = new Label();
+            lb_memberName = new Label();
             lb_savePoint = new Label();
             lb_cusName = new Label();
-            label24 = new Label();
-            label20 = new Label();
+            lb_leavePoint = new Label();
+            lb_OriginalAmount = new Label();
             lb_sum = new Label();
             panel4 = new Panel();
             lb_cusNum = new TextBox();
@@ -71,6 +71,7 @@ namespace Kiosk
             ln_point = new Label();
             lb_cusid = new Label();
             pnlStamp = new RoundedPanel();
+            button1 = new Button();
             btn_save = new Button();
             btn_del1 = new Button();
             roundedToplabel1 = new RoundedToplabel();
@@ -202,15 +203,15 @@ namespace Kiosk
             btn_back.UseVisualStyleBackColor = false;
             btn_back.Click += btn_back_Click;
             // 
-            // label22
+            // lb_memberName
             // 
-            label22.BackColor = Color.Transparent;
-            label22.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
-            label22.Location = new Point(316, 204);
-            label22.Name = "label22";
-            label22.Size = new Size(100, 41);
-            label22.TabIndex = 22;
-            label22.Text = "label12";
+            lb_memberName.BackColor = Color.Transparent;
+            lb_memberName.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lb_memberName.Location = new Point(237, 204);
+            lb_memberName.Name = "lb_memberName";
+            lb_memberName.Size = new Size(179, 41);
+            lb_memberName.TabIndex = 22;
+            lb_memberName.Text = "label12";
             // 
             // lb_savePoint
             // 
@@ -238,25 +239,25 @@ namespace Kiosk
             lb_cusName.Text = "회원명";
             lb_cusName.TextAlign = ContentAlignment.MiddleLeft;
             // 
-            // label24
+            // lb_leavePoint
             // 
-            label24.BackColor = Color.Transparent;
-            label24.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
-            label24.Location = new Point(237, 245);
-            label24.Name = "label24";
-            label24.Size = new Size(179, 41);
-            label24.TabIndex = 23;
-            label24.Text = "label13";
+            lb_leavePoint.BackColor = Color.Transparent;
+            lb_leavePoint.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lb_leavePoint.Location = new Point(237, 245);
+            lb_leavePoint.Name = "lb_leavePoint";
+            lb_leavePoint.Size = new Size(179, 41);
+            lb_leavePoint.TabIndex = 23;
+            lb_leavePoint.Text = "label13";
             // 
-            // label20
+            // lb_OriginalAmount
             // 
-            label20.BackColor = Color.Transparent;
-            label20.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
-            label20.Location = new Point(316, 163);
-            label20.Name = "label20";
-            label20.Size = new Size(100, 41);
-            label20.TabIndex = 21;
-            label20.Text = "label10";
+            lb_OriginalAmount.BackColor = Color.Transparent;
+            lb_OriginalAmount.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
+            lb_OriginalAmount.Location = new Point(237, 166);
+            lb_OriginalAmount.Name = "lb_OriginalAmount";
+            lb_OriginalAmount.Size = new Size(179, 38);
+            lb_OriginalAmount.TabIndex = 21;
+            lb_OriginalAmount.Text = "label10";
             // 
             // lb_sum
             // 
@@ -264,7 +265,7 @@ namespace Kiosk
             lb_sum.FlatStyle = FlatStyle.System;
             lb_sum.Font = new Font("맑은 고딕", 12F, FontStyle.Bold, GraphicsUnit.Point);
             lb_sum.ImageAlign = ContentAlignment.TopLeft;
-            lb_sum.Location = new Point(29, 163);
+            lb_sum.Location = new Point(29, 169);
             lb_sum.Name = "lb_sum";
             lb_sum.Size = new Size(387, 41);
             lb_sum.TabIndex = 2;
@@ -343,6 +344,7 @@ namespace Kiosk
             pnl_Pop_Membership.BorderRadius = 90;
             pnl_Pop_Membership.BorderSize = 1F;
             pnl_Pop_Membership.BottomBorderRadius = 40;
+            pnl_Pop_Membership.Controls.Add(lb_memberName);
             pnl_Pop_Membership.Controls.Add(btn_savepoint);
             pnl_Pop_Membership.Controls.Add(btn_del2);
             pnl_Pop_Membership.Controls.Add(lb_roundTop1);
@@ -350,13 +352,12 @@ namespace Kiosk
             pnl_Pop_Membership.Controls.Add(panel3);
             pnl_Pop_Membership.Controls.Add(button32);
             pnl_Pop_Membership.Controls.Add(panel4);
-            pnl_Pop_Membership.Controls.Add(lb_sum);
-            pnl_Pop_Membership.Controls.Add(label20);
-            pnl_Pop_Membership.Controls.Add(label24);
+            pnl_Pop_Membership.Controls.Add(lb_OriginalAmount);
+            pnl_Pop_Membership.Controls.Add(lb_leavePoint);
             pnl_Pop_Membership.Controls.Add(lb_cusName);
             pnl_Pop_Membership.Controls.Add(lb_savePoint);
-            pnl_Pop_Membership.Controls.Add(label22);
-            pnl_Pop_Membership.Location = new Point(734, 60);
+            pnl_Pop_Membership.Controls.Add(lb_sum);
+            pnl_Pop_Membership.Location = new Point(12, 12);
             pnl_Pop_Membership.Name = "pnl_Pop_Membership";
             pnl_Pop_Membership.RoundBottomLeft = true;
             pnl_Pop_Membership.RoundBottomRight = true;
@@ -365,7 +366,7 @@ namespace Kiosk
             pnl_Pop_Membership.ShadowColor = Color.FromArgb(60, 0, 0, 0);
             pnl_Pop_Membership.ShadowDepth = 8;
             pnl_Pop_Membership.ShowShadow = true;
-            pnl_Pop_Membership.Size = new Size(772, 509);
+            pnl_Pop_Membership.Size = new Size(1062, 619);
             pnl_Pop_Membership.TabIndex = 16;
             // 
             // btn_savepoint
@@ -635,6 +636,7 @@ namespace Kiosk
             pnlStamp.BorderRadius = 90;
             pnlStamp.BorderSize = 1F;
             pnlStamp.BottomBorderRadius = 40;
+            pnlStamp.Controls.Add(button1);
             pnlStamp.Controls.Add(btn_save);
             pnlStamp.Controls.Add(btn_del1);
             pnlStamp.Controls.Add(roundedToplabel1);
@@ -646,7 +648,7 @@ namespace Kiosk
             pnlStamp.Controls.Add(label14);
             pnlStamp.Controls.Add(label19);
             pnlStamp.Controls.Add(label21);
-            pnlStamp.Location = new Point(734, 57);
+            pnlStamp.Location = new Point(15, 12);
             pnlStamp.Name = "pnlStamp";
             pnlStamp.RoundBottomLeft = true;
             pnlStamp.RoundBottomRight = true;
@@ -657,6 +659,15 @@ namespace Kiosk
             pnlStamp.ShowShadow = true;
             pnlStamp.Size = new Size(772, 509);
             pnlStamp.TabIndex = 22;
+            // 
+            // button1
+            // 
+            button1.Location = new Point(229, 277);
+            button1.Name = "button1";
+            button1.Size = new Size(75, 23);
+            button1.TabIndex = 33;
+            button1.Text = "button1";
+            button1.UseVisualStyleBackColor = true;
             // 
             // btn_save
             // 
@@ -1060,9 +1071,9 @@ namespace Kiosk
             AutoScaleMode = AutoScaleMode.Font;
             AutoSize = true;
             ClientSize = new Size(1219, 700);
-            Controls.Add(pnlStamp);
             Controls.Add(pnl_Pop_Membership);
             Controls.Add(roundedPanel2);
+            Controls.Add(pnlStamp);
             Name = "Pop_MemberNum";
             Text = "Payment";
             Load += Membership_Load;
@@ -1096,11 +1107,11 @@ namespace Kiosk
         private System.ComponentModel.BackgroundWorker backgroundWorker2;
         private Button btn_allDelete;
         private Button btn_back;
-        private Label label22;
+        private Label lb_memberName;
         private Label lb_savePoint;
         private Label lb_cusName;
-        private Label label24;
-        private Label label20;
+        private Label lb_leavePoint;
+        private Label lb_OriginalAmount;
         private Label lb_sum;
         private Panel panel4;
         private TextBox lb_cusNum;
@@ -1166,5 +1177,6 @@ namespace Kiosk
         private RoundedPanel roundedPanel2;
         private Label lb_cusid1;
         private ColorDialog colorDialog1;
+        private Button button1;
     }
 }

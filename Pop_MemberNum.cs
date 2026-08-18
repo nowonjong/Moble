@@ -15,7 +15,6 @@ namespace Kiosk
     {
         private readonly MenuForm? menuForm;
         private bool memberLookupRunning;
-
         public Pop_MemberNum() : this(null)
         {
         }
@@ -26,9 +25,10 @@ namespace Kiosk
             InitializeComponent();
             pnlStamp.Hide();
             pnl_Pop_Membership.Hide();
-            label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
-            label22.Text = "-";
-            label24.Text = "0P";
+            lb_OriginalAmount.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+            lb_memberName.Text = "-";
+            lb_leavePoint.Text = "0P";
+            
             button32.Click += LookupMemberByPhone_Click;
             button29.Click += MemberCardLookup_Click;
         }
@@ -353,17 +353,20 @@ namespace Kiosk
                 if (!response.IsSuccess)
                 {
                     KioskSession.Member = null;
-                    label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
-                    label22.Text = "-";
-                    label24.Text = "0P";
+                    ln_point.Text = "-";
+                    lb_OriginalAmount.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+                    lb_memberName.Text = "-";
+                    lb_leavePoint.Text = "0P";
                     MessageBox.Show(response.Message, "회원 조회 실패", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
                 KioskSession.Member = response;
-                label20.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
-                label22.Text = response.MemberName;
-                label24.Text = response.Point.ToString("N0") + "P";
+                ln_point.Text = response.MemberId.ToString();
+                lb_OriginalAmount.Text = KioskSession.OriginalAmount.ToString("N0") + "원";
+                lb_memberName.Text = response.MemberName;
+                lb_leavePoint.Text = response.Point.ToString("N0") + "P";
+                
                 MessageBox.Show($"{response.MemberName} 회원님\n보유 포인트: {response.Point:N0}P", "회원 조회 완료");
             }
             catch (Exception ex)
