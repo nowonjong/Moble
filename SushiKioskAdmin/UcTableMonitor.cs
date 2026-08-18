@@ -30,7 +30,7 @@ namespace SushiKioskAdmin.Views
             for (int i = 1; i <= totalTables; i++)
             {
                 string tableKey = $"Table {i:D2}";
-                bool isOccupied = tableAmounts.ContainsKey(tableKey) && tableAmounts[tableKey] > 0;
+                bool isOccupied = tableAmounts.ContainsKey(tableKey);
                 int amountValue = isOccupied ? tableAmounts[tableKey] : 0;
 
                 if (isOccupied)
@@ -49,7 +49,9 @@ namespace SushiKioskAdmin.Views
                     TextAlign = ContentAlignment.TopLeft,
                     Text = $" Table {i:D2}\n\n [{statusText}]\n 금액: {amountStr}",
                     Tag = i,
-                    BackColor = isOccupied ? Color.FromArgb(231, 76, 60) : Color.FromArgb(46, 204, 113),
+                    BackColor = isOccupied
+                        ? Color.FromArgb(231, 76, 60)
+                        : Color.FromArgb(46, 204, 113),
                     ForeColor = Color.White
                 };
 

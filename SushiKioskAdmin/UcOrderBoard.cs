@@ -32,7 +32,6 @@ namespace SushiKioskAdmin.Views
             orderTable.Columns.Add("주문내역");
             orderTable.Columns.Add("금액", typeof(int));
             orderTable.Columns.Add("현재상태");
-
             LoadOrdersFromCsv();
 
             dgvOrders.DataSource = orderTable;
@@ -60,21 +59,20 @@ namespace SushiKioskAdmin.Views
         private void LoadOrdersFromCsv()
         {
             orderTable.Clear();
-
             string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
 
             if (!File.Exists(ordersPath))
+            {
+                ApplyCurrentFilter();
                 return;
+            }
 
-            string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
-
-            foreach (string line in lines)
+            foreach (string line in File.ReadAllLines(ordersPath, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 string[] parts = line.Split(',');
-
                 if (parts.Length < 6)
                     continue;
 
@@ -85,11 +83,10 @@ namespace SushiKioskAdmin.Views
                 int totalAmount = int.TryParse(parts[4].Trim(), out int amount) ? amount : 0;
                 string orderStatus = parts[5].Trim();
 
-                if (orderStatus == "결제완료" || orderStatus == "픽업완료" || orderStatus == "주문거절")
+                if (orderStatus == "결제완료" || orderStatus == "픽업완료" || orderStatus == "픽업 완료" || orderStatus == "주문거절" || orderStatus == "주문 거절")
                     continue;
 
                 string orderTime = orderTimeStr;
-
                 if (DateTime.TryParse(orderTimeStr, out DateTime dt))
                     orderTime = dt.ToString("HH:mm");
 
@@ -106,26 +103,21 @@ namespace SushiKioskAdmin.Views
         private string GetOrderItemsSummary(string identifier)
         {
             string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
-
             if (!File.Exists(itemsPath))
                 return "주문 내역 없음";
 
-            string[] lines = File.ReadAllLines(itemsPath, Encoding.UTF8);
             List<string> itemList = new List<string>();
 
-            foreach (string line in lines)
+            foreach (string line in File.ReadAllLines(itemsPath, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 string[] parts = line.Split(',');
-
                 if (parts.Length < 6)
                     continue;
 
-                string keyId = parts[0].Trim();
-
-                if (!keyId.Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                if (!parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 string menuName = parts[1].Trim();
@@ -141,35 +133,47 @@ namespace SushiKioskAdmin.Views
             return itemList.Count > 0 ? string.Join(", ", itemList) : "일반 주문";
         }
 
-        private void UpdateOrderStatus(string identifier, string newStatus)
+        private bool UpdateOrderStatus(string identifier, string newStatus)
         {
-            string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
-
-            if (!File.Exists(ordersPath))
-                return;
-
-            string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
-
-            for (int i = 0; i < lines.Length; i++)
+            try
             {
-                if (string.IsNullOrWhiteSpace(lines[i]))
-                    continue;
+                string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
+                if (!File.Exists(ordersPath))
+                    return false;
 
-                string[] parts = lines[i].Split(',');
+                string[] lines = File.ReadAllLines(ordersPath, Encoding.UTF8);
+                bool found = false;
 
-                if (parts.Length < 6)
-                    continue;
-
-                if (parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                for (int i = 0; i < lines.Length; i++)
                 {
+                    if (string.IsNullOrWhiteSpace(lines[i]))
+                        continue;
+
+                    string[] parts = lines[i].Split(',');
+                    if (parts.Length < 6)
+                        continue;
+
+                    if (!parts[0].Trim().Equals(identifier, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
                     parts[5] = newStatus;
                     lines[i] = string.Join(",", parts);
+                    found = true;
                     break;
                 }
-            }
 
-            File.WriteAllLines(ordersPath, lines, new UTF8Encoding(false));
-            lastOrdersModifiedTime = File.GetLastWriteTime(ordersPath);
+                if (!found)
+                    return false;
+
+                File.WriteAllLines(ordersPath, lines, new UTF8Encoding(false));
+                lastOrdersModifiedTime = File.GetLastWriteTime(ordersPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("주문 상태 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
         }
 
         private void FilterOrders_CheckedChanged(object sender, EventArgs e)
@@ -177,7 +181,6 @@ namespace SushiKioskAdmin.Views
             if (sender is RadioButton rdo && rdo.Checked)
             {
                 ApplyCurrentFilter();
-
                 bool isAppOrderFilter = rdoApp.Checked || rdoWaiting.Checked;
                 btnAccept.Visible = isAppOrderFilter;
                 btnReject.Visible = isAppOrderFilter;
@@ -186,25 +189,10 @@ namespace SushiKioskAdmin.Views
             }
         }
 
-        private void btnAccept_Click(object sender, EventArgs e)
-        {
-            ProcessAppOrder("조리 중");
-        }
-
-        private void btnReject_Click(object sender, EventArgs e)
-        {
-            ProcessAppOrder("주문 거절");
-        }
-
-        private void btnCookDone_Click(object sender, EventArgs e)
-        {
-            ProcessAppOrder("조리 완료");
-        }
-
-        private void btnPickUpDone_Click(object sender, EventArgs e)
-        {
-            ProcessAppOrder("픽업완료");
-        }
+        private void btnAccept_Click(object sender, EventArgs e) => ProcessAppOrder("조리 중");
+        private void btnReject_Click(object sender, EventArgs e) => ProcessAppOrder("주문 거절");
+        private void btnCookDone_Click(object sender, EventArgs e) => ProcessAppOrder("조리 완료");
+        private void btnPickUpDone_Click(object sender, EventArgs e) => ProcessAppOrder("픽업 완료");
 
         private void ProcessAppOrder(string newStatus)
         {
@@ -221,9 +209,9 @@ namespace SushiKioskAdmin.Views
             string source = rowView["주문출처"].ToString();
             string currentStatus = rowView["현재상태"].ToString();
 
-            if (source == "키오스크")
+            if (source != "앱")
             {
-                MessageBox.Show("키오스크 주문은 테이블 결제를 통해 처리됩니다.", "안내");
+                MessageBox.Show("키오스크 주문은 키오스크 결제를 통해 처리됩니다.", "안내");
                 return;
             }
 
@@ -235,7 +223,12 @@ namespace SushiKioskAdmin.Views
                     return;
                 }
 
-                UpdateOrderStatus(identifier, "조리 중");
+                if (!UpdateOrderStatus(identifier, "조리 중"))
+                {
+                    MessageBox.Show("주문 상태 변경에 실패했습니다.", "오류");
+                    return;
+                }
+
                 LoadOrdersFromCsv();
                 MessageBox.Show("앱 주문을 접수했습니다. 조리를 시작합니다.", "알림");
                 return;
@@ -249,7 +242,12 @@ namespace SushiKioskAdmin.Views
                     return;
                 }
 
-                UpdateOrderStatus(identifier, "조리 완료");
+                if (!UpdateOrderStatus(identifier, "조리 완료"))
+                {
+                    MessageBox.Show("주문 상태 변경에 실패했습니다.", "오류");
+                    return;
+                }
+
                 LoadOrdersFromCsv();
                 MessageBox.Show("조리 완료 처리되었습니다.", "알림");
                 return;
@@ -264,12 +262,10 @@ namespace SushiKioskAdmin.Views
                 }
 
                 DialogResult result = MessageBox.Show("선택한 앱 주문을 거절하시겠습니까?", "주문 거절", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
                 if (result != DialogResult.Yes)
                     return;
 
                 MainAdminForm mainForm = FindForm() as MainAdminForm;
-
                 if (mainForm == null)
                 {
                     MessageBox.Show("메인 관리자 폼을 찾을 수 없습니다.", "오류");
@@ -294,15 +290,15 @@ namespace SushiKioskAdmin.Views
                         MessageBox.Show($"주문 거절 처리에 실패했습니다.\n{message}", "오류");
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    MessageBox.Show("주문 거절 처리 응답을 확인할 수 없습니다.", "오류");
+                    MessageBox.Show($"주문 거절 처리 응답을 확인할 수 없습니다.\n{ex.Message}", "오류");
                 }
 
                 return;
             }
 
-            if (newStatus == "픽업완료")
+            if (newStatus == "픽업 완료")
             {
                 if (currentStatus != "조리 완료")
                 {
@@ -311,7 +307,6 @@ namespace SushiKioskAdmin.Views
                 }
 
                 MainAdminForm mainForm = FindForm() as MainAdminForm;
-
                 if (mainForm == null)
                 {
                     MessageBox.Show("메인 관리자 폼을 찾을 수 없습니다.", "오류");
@@ -329,16 +324,16 @@ namespace SushiKioskAdmin.Views
                     if (status == "SUCCESS")
                     {
                         LoadOrdersFromCsv();
-                        MessageBox.Show("픽업 완료 처리되었습니다.\n매출 내역으로 이동되었습니다.", "알림");
+                        MessageBox.Show("픽업 완료 처리되었습니다.", "알림");
                     }
                     else
                     {
                         MessageBox.Show($"픽업 완료 처리에 실패했습니다.\n{message}", "오류");
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    MessageBox.Show("픽업 완료 처리 응답을 확인할 수 없습니다.", "오류");
+                    MessageBox.Show($"픽업 완료 처리 응답을 확인할 수 없습니다.\n{ex.Message}", "오류");
                 }
 
                 return;
@@ -401,13 +396,8 @@ namespace SushiKioskAdmin.Views
             string ordersPath = Path.Combine(Application.StartupPath, "susi_orders_realtime.csv");
             string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
 
-            lastOrdersModifiedTime = File.Exists(ordersPath)
-                ? File.GetLastWriteTime(ordersPath)
-                : DateTime.MinValue;
-
-            lastItemsModifiedTime = File.Exists(itemsPath)
-                ? File.GetLastWriteTime(itemsPath)
-                : DateTime.MinValue;
+            lastOrdersModifiedTime = File.Exists(ordersPath) ? File.GetLastWriteTime(ordersPath) : DateTime.MinValue;
+            lastItemsModifiedTime = File.Exists(itemsPath) ? File.GetLastWriteTime(itemsPath) : DateTime.MinValue;
         }
 
         private void refreshTimer_Tick(object sender, EventArgs e)

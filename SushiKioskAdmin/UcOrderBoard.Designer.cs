@@ -124,7 +124,7 @@
             btnPickUpDone.TabIndex = 3;
             btnPickUpDone.Text = "픽업 완료";
             btnPickUpDone.UseVisualStyleBackColor = true;
-            btnPickUpDone.Click += btnCookDone_Click;
+            btnPickUpDone.Click += btnPickUpDone_Click;
             // 
             // btnCookDone
             // 

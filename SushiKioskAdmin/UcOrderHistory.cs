@@ -10,11 +10,14 @@ namespace SushiKioskAdmin.Views
     public partial class UcOrderHistory : UserControl
     {
         private DataTable historyTable;
+        private DateTime lastHistoryModifiedTime = DateTime.MinValue;
+        private DateTime lastItemsModifiedTime = DateTime.MinValue;
 
         public UcOrderHistory()
         {
             InitializeComponent();
             InitHistoryData();
+            InitAutoRefresh();
         }
 
         private void InitHistoryData()
@@ -22,7 +25,6 @@ namespace SushiKioskAdmin.Views
             cmbOrderType.Items.Clear();
             cmbOrderType.Items.AddRange(new string[] { "전체", "앱", "키오스크" });
             cmbOrderType.SelectedIndex = 0;
-
             dtpStart.Value = DateTime.Now.AddDays(-7);
             dtpEnd.Value = DateTime.Now;
 
@@ -42,6 +44,11 @@ namespace SushiKioskAdmin.Views
 
             dgvHistoryList.DataSource = historyTable;
             dgvHistoryList.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            dgvHistoryList.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            dgvHistoryList.MultiSelect = false;
+            dgvHistoryList.ReadOnly = true;
+            dgvHistoryList.AllowUserToAddRows = false;
+
             dgvHistoryList.Columns["결제금액"].DefaultCellStyle.Format = "N0";
             dgvHistoryList.Columns["결제일시"].DefaultCellStyle.Format = "yyyy-MM-dd HH:mm:ss";
 
@@ -57,6 +64,18 @@ namespace SushiKioskAdmin.Views
             dgvHistoryList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
         }
 
+        private void InitAutoRefresh()
+        {
+            string historyPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            if (File.Exists(historyPath))
+                lastHistoryModifiedTime = File.GetLastWriteTime(historyPath);
+
+            if (File.Exists(itemsPath))
+                lastItemsModifiedTime = File.GetLastWriteTime(itemsPath);
+        }
+
         private void LoadHistoryFromCsv()
         {
             historyTable.Clear();
@@ -66,16 +85,13 @@ namespace SushiKioskAdmin.Views
             if (!File.Exists(historyPath))
                 return;
 
-            string[] lines = File.ReadAllLines(historyPath, Encoding.UTF8);
-
-            foreach (string line in lines)
+            foreach (string line in File.ReadAllLines(historyPath, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
                 string[] parts = line.Split(',');
 
-                // ReceiptNo,PaymentDate,Source,OrderType,OriginalAmount,UsedPoint,TotalAmount,EarnedPoint,MemberId,PaymentMethod
                 if (parts.Length < 10)
                     continue;
 
@@ -95,84 +111,110 @@ namespace SushiKioskAdmin.Views
 
                 string paymentMethod = parts[9].Trim();
 
-                historyTable.Rows.Add(receiptNo, paymentDate, source, orderType, totalAmount, paymentMethod, originalAmount, usedPoint, earnedPoint, memberId);
+                historyTable.Rows.Add(
+                    receiptNo,
+                    paymentDate,
+                    source,
+                    orderType,
+                    totalAmount,
+                    paymentMethod,
+                    originalAmount,
+                    usedPoint,
+                    earnedPoint,
+                    memberId);
             }
         }
 
         private void btnSearch_Click(object sender, EventArgs e)
         {
-            LoadHistoryFromCsv();
+            ApplyFilter();
+            MessageBox.Show("조회가 완료되었습니다.", "안내");
+        }
 
+        private void ApplyFilter()
+        {
             DataView dv = historyTable.DefaultView;
+
             string selectedType = cmbOrderType.SelectedItem?.ToString() ?? "전체";
+
             DateTime startDate = dtpStart.Value.Date;
             DateTime endDate = dtpEnd.Value.Date.AddDays(1).AddSeconds(-1);
 
-            string typeFilter = selectedType == "전체" ? "" : $"출처 = '{selectedType}'";
-            string dateFilter = $"결제일시 >= #{startDate:yyyy-MM-dd HH:mm:ss}# AND 결제일시 <= #{endDate:yyyy-MM-dd HH:mm:ss}#";
+            if (startDate > endDate)
+            {
+                MessageBox.Show("시작일이 종료일보다 뒤일 수 없습니다.", "안내");
+                return;
+            }
 
-            if (string.IsNullOrEmpty(typeFilter))
+            string dateFilter =
+                $"결제일시 >= #{startDate:MM/dd/yyyy HH:mm:ss}# " +
+                $"AND 결제일시 <= #{endDate:MM/dd/yyyy HH:mm:ss}#";
+
+            if (selectedType == "전체")
                 dv.RowFilter = dateFilter;
             else
-                dv.RowFilter = $"{typeFilter} AND {dateFilter}";
-
-            MessageBox.Show("조회가 완료되었습니다.", "안내");
+                dv.RowFilter = $"출처 = '{selectedType.Replace("'", "''")}' AND {dateFilter}";
         }
 
         private void dgvHistoryList_SelectionChanged(object sender, EventArgs e)
         {
             if (dgvHistoryList.SelectedRows.Count == 0)
+            {
+                txtReceipt.Clear();
+                return;
+            }
+
+            if (!(dgvHistoryList.SelectedRows[0].DataBoundItem is DataRowView rowView))
                 return;
 
-            if (dgvHistoryList.SelectedRows[0].DataBoundItem is DataRowView rowView)
-            {
-                string orderNo = rowView["영수증번호"].ToString();
-                string orderDate = Convert.ToDateTime(rowView["결제일시"]).ToString("yyyy-MM-dd HH:mm:ss");
-                string source = rowView["출처"].ToString();
-                string type = rowView["수령방식"].ToString();
-                int originalAmount = Convert.ToInt32(rowView["원주문금액"]);
-                int usedPoint = Convert.ToInt32(rowView["사용포인트"]);
-                int totalAmount = Convert.ToInt32(rowView["결제금액"]);
-                int earnedPoint = Convert.ToInt32(rowView["적립포인트"]);
-                int memberId = Convert.ToInt32(rowView["회원번호"]);
-                string payMethod = rowView["결제수단"].ToString();
+            string orderNo = rowView["영수증번호"].ToString();
+            string orderDate = Convert.ToDateTime(rowView["결제일시"]).ToString("yyyy-MM-dd HH:mm:ss");
+            string source = rowView["출처"].ToString();
+            string type = rowView["수령방식"].ToString();
 
-                StringBuilder sb = new StringBuilder();
+            int originalAmount = Convert.ToInt32(rowView["원주문금액"]);
+            int usedPoint = Convert.ToInt32(rowView["사용포인트"]);
+            int totalAmount = Convert.ToInt32(rowView["결제금액"]);
+            int earnedPoint = Convert.ToInt32(rowView["적립포인트"]);
+            int memberId = Convert.ToInt32(rowView["회원번호"]);
 
-                sb.AppendLine("==========================================");
-                sb.AppendLine("            [ 초밥 키오스크 영수증 ]");
-                sb.AppendLine("==========================================");
-                sb.AppendLine($"영수증번호 : {orderNo}");
-                sb.AppendLine($"결제일시 : {orderDate}");
-                sb.AppendLine($"주문유형 : [{source}] - {type}");
+            string payMethod = rowView["결제수단"].ToString();
 
-                if (memberId > 0)
-                    sb.AppendLine($"회원번호 : {memberId}");
+            StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine("------------------------------------------");
-                sb.AppendLine(" 상품명                수량     금액(SubTotal)");
-                sb.AppendLine("------------------------------------------");
+            sb.AppendLine("==========================================");
+            sb.AppendLine("            [ 초밥 키오스크 영수증 ]");
+            sb.AppendLine("==========================================");
+            sb.AppendLine($"영수증번호 : {orderNo}");
+            sb.AppendLine($"결제일시 : {orderDate}");
+            sb.AppendLine($"주문유형 : [{source}] - {type}");
 
-                LoadReceiptItems(orderNo, sb);
+            if (memberId > 0)
+                sb.AppendLine($"회원번호 : {memberId}");
 
-                sb.AppendLine("------------------------------------------");
-                sb.AppendLine($" 주문금액 :                     {originalAmount:N0}원");
+            sb.AppendLine("------------------------------------------");
+            sb.AppendLine(" 상품명                수량     금액(SubTotal)");
+            sb.AppendLine("------------------------------------------");
 
-                if (usedPoint > 0)
-                    sb.AppendLine($" 포인트사용 :                  -{usedPoint:N0}P");
+            LoadReceiptItems(orderNo, sb);
 
-                sb.AppendLine($" 결제금액 :                     {totalAmount:N0}원");
-                sb.AppendLine($" 결제수단 :                     {payMethod}");
+            sb.AppendLine("------------------------------------------");
+            sb.AppendLine($" 주문금액 :                     {originalAmount:N0}원");
 
-                if (memberId > 0)
-                    sb.AppendLine($" 적립포인트 :                   +{earnedPoint:N0}P");
+            if (usedPoint > 0)
+                sb.AppendLine($" 포인트사용 :                  -{usedPoint:N0}P");
 
-                sb.AppendLine("==========================================");
-                sb.AppendLine("           이용해 주셔서 감사합니다!");
-                sb.AppendLine("==========================================");
+            sb.AppendLine($" 결제금액 :                     {totalAmount:N0}원");
+            sb.AppendLine($" 결제수단 :                     {payMethod}");
 
-                txtReceipt.Text = sb.ToString();
-            }
+            if (memberId > 0)
+                sb.AppendLine($" 적립포인트 :                   +{earnedPoint:N0}P");
+
+            sb.AppendLine("==========================================");
+            sb.AppendLine("           이용해 주셔서 감사합니다!");
+            sb.AppendLine("==========================================");
+
+            txtReceipt.Text = sb.ToString();
         }
 
         private void LoadReceiptItems(string receiptNo, StringBuilder sb)
@@ -185,10 +227,9 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            string[] lines = File.ReadAllLines(itemsPath, Encoding.UTF8);
             bool hasItem = false;
 
-            foreach (string line in lines)
+            foreach (string line in File.ReadAllLines(itemsPath, Encoding.UTF8))
             {
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
@@ -198,18 +239,17 @@ namespace SushiKioskAdmin.Views
                 if (parts.Length < 6)
                     continue;
 
-                string keyId = parts[0].Trim();
-
-                if (!keyId.Equals(receiptNo, StringComparison.OrdinalIgnoreCase))
+                if (!parts[0].Trim().Equals(receiptNo, StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 string menuName = parts[1].Trim();
+
                 int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
                 int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
                 int subTotal = int.TryParse(parts[5].Trim(), out int st) ? st : 0;
 
                 if (discountQty > 0)
-                    sb.AppendLine($" {menuName} (할인{discountQty}개 포함)  {qty}개    {subTotal:N0}원");
+                    sb.AppendLine($" {menuName} (할인 {discountQty}개 포함)  {qty}개    {subTotal:N0}원");
                 else
                     sb.AppendLine($" {menuName}                    {qty}개    {subTotal:N0}원");
 
@@ -228,12 +268,102 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            MessageBox.Show("영수증 프린터로 인쇄 명령을 전송했습니다.", "영수증 재발행", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                "영수증 프린터로 인쇄 명령을 전송했습니다.",
+                "영수증 재발행",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        private void refreshTimer_Tick(object sender, EventArgs e)
+        {
+            string historyPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            DateTime currentHistoryModifiedTime =
+                File.Exists(historyPath)
+                ? File.GetLastWriteTime(historyPath)
+                : DateTime.MinValue;
+
+            DateTime currentItemsModifiedTime =
+                File.Exists(itemsPath)
+                ? File.GetLastWriteTime(itemsPath)
+                : DateTime.MinValue;
+
+            if (currentHistoryModifiedTime != lastHistoryModifiedTime ||
+                currentItemsModifiedTime != lastItemsModifiedTime)
+            {
+                lastHistoryModifiedTime = currentHistoryModifiedTime;
+                lastItemsModifiedTime = currentItemsModifiedTime;
+
+                string selectedReceiptNo = null;
+
+                if (dgvHistoryList.SelectedRows.Count > 0 &&
+                    dgvHistoryList.SelectedRows[0].DataBoundItem is DataRowView selectedRow)
+                {
+                    selectedReceiptNo = selectedRow["영수증번호"].ToString();
+                }
+
+                LoadHistoryFromCsv();
+                ApplyFilter();
+
+                if (!string.IsNullOrWhiteSpace(selectedReceiptNo))
+                    RestoreSelection(selectedReceiptNo);
+            }
+        }
+
+        private void RestoreSelection(string receiptNo)
+        {
+            foreach (DataGridViewRow row in dgvHistoryList.Rows)
+            {
+                if (row.IsNewRow)
+                    continue;
+
+                if (row.Cells["영수증번호"].Value?.ToString()
+                    .Equals(receiptNo, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    row.Selected = true;
+
+                    if (row.Cells.Count > 0)
+                        dgvHistoryList.CurrentCell = row.Cells[0];
+
+                    return;
+                }
+            }
+
+            txtReceipt.Clear();
+        }
+
+        public void RefreshHistory()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(RefreshHistory));
+                return;
+            }
+
+            LoadHistoryFromCsv();
+            ApplyFilter();
+
+            string historyPath = Path.Combine(Application.StartupPath, "susi_sales_history.csv");
+            string itemsPath = Path.Combine(Application.StartupPath, "susi_order_items.csv");
+
+            lastHistoryModifiedTime =
+                File.Exists(historyPath)
+                ? File.GetLastWriteTime(historyPath)
+                : DateTime.MinValue;
+
+            lastItemsModifiedTime =
+                File.Exists(itemsPath)
+                ? File.GetLastWriteTime(itemsPath)
+                : DateTime.MinValue;
         }
 
         private void UcOrderHistory_Load(object sender, EventArgs e)
         {
-            dgvHistoryList.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            dgvHistoryList.ColumnHeadersHeightSizeMode =
+                DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
             dgvHistoryList.ColumnHeadersHeight = 35;
 
             foreach (DataGridViewColumn col in dgvHistoryList.Columns)

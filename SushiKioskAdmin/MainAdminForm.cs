@@ -1242,6 +1242,150 @@ namespace SushiKioskAdmin
             }
         }
 
+        public bool UpdateMemberInfo(int memberId, string name, string phone, string address, out string message)
+        {
+            lock (memberFileLock)
+            {
+                try
+                {
+                    string path = Path.Combine(Application.StartupPath, "member.csv");
+
+                    if (!File.Exists(path))
+                    {
+                        message = "Member data not found.";
+                        return false;
+                    }
+
+                    string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+                    int targetIndex = -1;
+
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        if (string.IsNullOrWhiteSpace(lines[i]))
+                            continue;
+
+                        string[] parts = lines[i].Split(',');
+
+                        if (parts.Length < 7)
+                            continue;
+
+                        if (int.TryParse(parts[0].Trim(), out int id) && id == memberId)
+                            targetIndex = i;
+
+                        if (int.TryParse(parts[0].Trim(), out int otherId) &&
+                            otherId != memberId &&
+                            parts[2].Trim().Equals(phone, StringComparison.OrdinalIgnoreCase))
+                        {
+                            message = "이미 등록된 연락처입니다.";
+                            return false;
+                        }
+                    }
+
+                    if (targetIndex < 0)
+                    {
+                        message = "회원 정보를 찾을 수 없습니다.";
+                        return false;
+                    }
+
+                    string[] target = lines[targetIndex].Split(',');
+
+                    target[1] = name;
+                    target[2] = phone;
+                    target[5] = address;
+
+                    lines[targetIndex] = string.Join(",", target);
+
+                    File.WriteAllLines(path, lines, new UTF8Encoding(false));
+
+                    message = "SUCCESS";
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    message = ex.Message;
+                    return false;
+                }
+            }
+        }
+
+        public bool DeleteMember(int memberId, out string message)
+        {
+            lock (memberFileLock)
+            {
+                try
+                {
+                    if (HasPendingAppOrder(memberId))
+                    {
+                        message = "진행 중인 앱 주문이 있는 회원은 삭제할 수 없습니다.";
+                        return false;
+                    }
+
+                    string path = Path.Combine(Application.StartupPath, "member.csv");
+
+                    if (!File.Exists(path))
+                    {
+                        message = "Member data not found.";
+                        return false;
+                    }
+
+                    List<string> lines = File.ReadAllLines(path, Encoding.UTF8).ToList();
+
+                    int removedCount = lines.RemoveAll(line =>
+                    {
+                        if (string.IsNullOrWhiteSpace(line))
+                            return false;
+
+                        string[] parts = line.Split(',');
+
+                        return parts.Length >= 7 &&
+                               int.TryParse(parts[0].Trim(), out int id) &&
+                               id == memberId;
+                    });
+
+                    if (removedCount == 0)
+                    {
+                        message = "회원 정보를 찾을 수 없습니다.";
+                        return false;
+                    }
+
+                    File.WriteAllLines(path, lines, new UTF8Encoding(false));
+
+                    message = "SUCCESS";
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    message = ex.Message;
+                    return false;
+                }
+            }
+        }
+
+        private bool HasPendingAppOrder(int memberId)
+        {
+            string path = Path.Combine(Application.StartupPath, "susi_order_payments.csv");
+
+            if (!File.Exists(path))
+                return false;
+
+            foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] parts = line.Split(',');
+
+                if (parts.Length < 5)
+                    continue;
+
+                if (int.TryParse(parts[1].Trim(), out int savedMemberId) &&
+                    savedMemberId == memberId)
+                    return true;
+            }
+
+            return false;
+        }
+
         // =========================================================
         // 주문 조회 / Identifier
         // =========================================================

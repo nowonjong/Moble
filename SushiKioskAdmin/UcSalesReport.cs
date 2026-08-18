@@ -29,6 +29,9 @@ namespace SushiKioskAdmin.Views
             dgvSalesReport.EnableHeadersVisualStyles = false;
             dgvSalesReport.ColumnHeadersDefaultCellStyle.BackColor = SystemColors.Control;
             dgvSalesReport.ColumnHeadersDefaultCellStyle.SelectionBackColor = SystemColors.Control;
+            dgvSalesReport.ReadOnly = true;
+            dgvSalesReport.AllowUserToAddRows = false;
+            dgvSalesReport.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 
             dtpStartDate.Value = DateTime.Now.AddMonths(-1);
             dtpEndDate.Value = DateTime.Now;
@@ -74,7 +77,6 @@ namespace SushiKioskAdmin.Views
             chartArea.AxisY.MajorGrid.LineColor = Color.LightGray;
             chartArea.AxisY.LabelStyle.Format = "{0:N0}원";
             chartArea.AxisX.Interval = 1;
-
             chartSales.ChartAreas.Add(chartArea);
 
             Series series = new Series("매출액")
@@ -101,7 +103,7 @@ namespace SushiKioskAdmin.Views
                 return;
 
             DateTime start = dtpStartDate.Value.Date;
-            DateTime end = dtpEndDate.Value.Date.AddDays(1).AddSeconds(-1);
+            DateTime end = dtpEndDate.Value.Date.AddDays(1).AddTicks(-1);
 
             if (start > end)
             {
@@ -109,33 +111,48 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
+            if (cmbPeriodUnit.SelectedIndex == 1 && (start.Year != end.Year || start.Month != end.Month))
+            {
+                MessageBox.Show("주차별 매출 조회는 같은 달 안에서 조회해 주세요.\n예: 2026-08-01 ~ 2026-08-31", "안내");
+                return;
+            }
+
             LoadSalesDataFromCsv();
 
-            DataRow[] filteredItemRows = salesTable.Select($"결제일시 >= #{start:yyyy-MM-dd HH:mm:ss}# AND 결제일시 <= #{end:yyyy-MM-dd HH:mm:ss}#");
-            DataRow[] filteredPaymentRows = paymentTable.Select($"결제일시 >= #{start:yyyy-MM-dd HH:mm:ss}# AND 결제일시 <= #{end:yyyy-MM-dd HH:mm:ss}#");
+            DataRow[] filteredItemRows = salesTable.AsEnumerable()
+                .Where(r =>
+                {
+                    DateTime paymentDate = r.Field<DateTime>("결제일시");
+                    return paymentDate >= start && paymentDate <= end;
+                }).ToArray();
+
+            DataRow[] filteredPaymentRows = paymentTable.AsEnumerable()
+                .Where(r =>
+                {
+                    DateTime paymentDate = r.Field<DateTime>("결제일시");
+                    return paymentDate >= start && paymentDate <= end;
+                }).ToArray();
 
             DataTable summaryTable = new DataTable();
             summaryTable.Columns.Add("메뉴명", typeof(string));
             summaryTable.Columns.Add("수량", typeof(int));
-            summaryTable.Columns.Add("결제금액", typeof(int));
+            summaryTable.Columns.Add("메뉴매출액", typeof(int));
 
             if (filteredItemRows.Length > 0)
             {
-                var groupedData = filteredItemRows
-                    .GroupBy(r => r["메뉴명"].ToString())
-                    .Select(g => new
-                    {
-                        MenuName = g.Key,
-                        TotalQty = g.Sum(r => Convert.ToInt32(r["수량"])),
-                        TotalAmount = g.Sum(r => Convert.ToInt32(r["메뉴결제금액"]))
-                    });
+                var groupedData = filteredItemRows.GroupBy(r => r["메뉴명"].ToString()).Select(g => new
+                {
+                    MenuName = g.Key,
+                    TotalQty = g.Sum(r => Convert.ToInt32(r["수량"])),
+                    TotalAmount = g.Sum(r => Convert.ToInt32(r["메뉴결제금액"]))
+                });
 
                 foreach (var item in groupedData)
                     summaryTable.Rows.Add(item.MenuName, item.TotalQty, item.TotalAmount);
 
                 dgvSalesReport.DataSource = summaryTable;
                 dgvSalesReport.Columns["수량"].DefaultCellStyle.Format = "N0";
-                dgvSalesReport.Columns["결제금액"].DefaultCellStyle.Format = "N0";
+                dgvSalesReport.Columns["메뉴매출액"].DefaultCellStyle.Format = "N0";
             }
             else
             {
@@ -153,7 +170,7 @@ namespace SushiKioskAdmin.Views
                 for (int i = 0; i < days.Length; i++)
                 {
                     int daySum = filteredPaymentRows
-                        .Where(r => Convert.ToDateTime(r["결제일시"]).DayOfWeek == days[i])
+                        .Where(r => r.Field<DateTime>("결제일시").DayOfWeek == days[i])
                         .Sum(r => Convert.ToInt32(r["실제결제금액"]));
 
                     AddChartPoint(i + 1, daySum, dayNames[i]);
@@ -164,9 +181,13 @@ namespace SushiKioskAdmin.Views
                 for (int week = 1; week <= 5; week++)
                 {
                     int targetWeek = week;
-
                     int weekSum = filteredPaymentRows
-                        .Where(r => (Convert.ToDateTime(r["결제일시"]).Day - 1) / 7 + 1 == targetWeek)
+                        .Where(r =>
+                        {
+                            int day = r.Field<DateTime>("결제일시").Day;
+                            int weekNumber = (day - 1) / 7 + 1;
+                            return weekNumber == targetWeek;
+                        })
                         .Sum(r => Convert.ToInt32(r["실제결제금액"]));
 
                     AddChartPoint(week, weekSum, $"{week}주차");
@@ -177,9 +198,8 @@ namespace SushiKioskAdmin.Views
                 for (int month = 1; month <= 12; month++)
                 {
                     int targetMonth = month;
-
                     int monthSum = filteredPaymentRows
-                        .Where(r => Convert.ToDateTime(r["결제일시"]).Month == targetMonth)
+                        .Where(r => r.Field<DateTime>("결제일시").Month == targetMonth)
                         .Sum(r => Convert.ToInt32(r["실제결제금액"]));
 
                     AddChartPoint(month, monthSum, $"{month}월");
@@ -214,7 +234,7 @@ namespace SushiKioskAdmin.Views
             if (!File.Exists(historyPath))
                 return;
 
-            var historyDict = new Dictionary<string, DateTime>();
+            Dictionary<string, DateTime> historyDict = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
             foreach (string line in File.ReadAllLines(historyPath, Encoding.UTF8))
             {
@@ -222,12 +242,12 @@ namespace SushiKioskAdmin.Views
                     continue;
 
                 string[] parts = line.Split(',');
-
-                // ReceiptNo,PaymentDate,Source,OrderType,OriginalAmount,UsedPoint,TotalAmount,EarnedPoint,MemberId,PaymentMethod
                 if (parts.Length < 10)
                     continue;
 
                 string receiptNo = parts[0].Trim();
+                if (string.IsNullOrWhiteSpace(receiptNo))
+                    continue;
 
                 if (!DateTime.TryParse(parts[1].Trim(), out DateTime payDate))
                     continue;
@@ -251,16 +271,13 @@ namespace SushiKioskAdmin.Views
                     continue;
 
                 string[] parts = line.Split(',');
-
                 if (parts.Length < 6)
                     continue;
 
                 string receiptNo = parts[0].Trim();
-
-                if (!historyDict.ContainsKey(receiptNo))
+                if (!historyDict.TryGetValue(receiptNo, out DateTime payDate))
                     continue;
 
-                DateTime payDate = historyDict[receiptNo];
                 string menuName = parts[1].Trim();
                 int price = int.TryParse(parts[2].Trim(), out int p) ? p : 0;
                 int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
@@ -279,28 +296,46 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            using (SaveFileDialog sfd = new SaveFileDialog { Filter = "CSV 파일 (*.csv)|*.csv", FileName = $"매출리포트_{DateTime.Now:yyyyMMdd}.csv" })
+            using (SaveFileDialog sfd = new SaveFileDialog
             {
-                if (sfd.ShowDialog() == DialogResult.OK)
+                Filter = "CSV 파일 (*.csv)|*.csv",
+                FileName = $"매출리포트_{DateTime.Now:yyyyMMdd}.csv"
+            })
+            {
+                if (sfd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                try
                 {
                     StringBuilder sb = new StringBuilder();
-
-                    var headers = dgvSalesReport.Columns.Cast<DataGridViewColumn>().Select(c => c.HeaderText);
+                    var headers = dgvSalesReport.Columns.Cast<DataGridViewColumn>().Select(c => EscapeCsv(c.HeaderText));
                     sb.AppendLine(string.Join(",", headers));
 
                     foreach (DataGridViewRow row in dgvSalesReport.Rows)
                     {
-                        if (!row.IsNewRow)
-                        {
-                            var cells = row.Cells.Cast<DataGridViewCell>().Select(c => $"\"{c.Value}\"");
-                            sb.AppendLine(string.Join(",", cells));
-                        }
+                        if (row.IsNewRow)
+                            continue;
+
+                        var cells = row.Cells.Cast<DataGridViewCell>().Select(c => EscapeCsv(c.Value?.ToString() ?? ""));
+                        sb.AppendLine(string.Join(",", cells));
                     }
 
-                    File.WriteAllText(sfd.FileName, sb.ToString(), Encoding.UTF8);
+                    File.WriteAllText(sfd.FileName, sb.ToString(), new UTF8Encoding(true));
                     MessageBox.Show("CSV 파일로 성공적으로 저장되었습니다.", "완료");
                 }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("CSV 파일 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
+        }
+
+        private string EscapeCsv(string value)
+        {
+            if (value == null)
+                return "\"\"";
+
+            return "\"" + value.Replace("\"", "\"\"") + "\"";
         }
 
         private void ExportToPdf()
@@ -313,18 +348,28 @@ namespace SushiKioskAdmin.Views
 
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-            using (SaveFileDialog sfd = new SaveFileDialog { Filter = "PDF 파일 (*.pdf)|*.pdf", FileName = $"매출리포트_{DateTime.Now:yyyyMMdd}.pdf" })
+            using (SaveFileDialog sfd = new SaveFileDialog
             {
-                if (sfd.ShowDialog() == DialogResult.OK)
-                {
-                    Document pdfDoc = new Document(PageSize.A4, 10f, 10f, 10f, 0f);
+                Filter = "PDF 파일 (*.pdf)|*.pdf",
+                FileName = $"매출리포트_{DateTime.Now:yyyyMMdd}.pdf"
+            })
+            {
+                if (sfd.ShowDialog() != DialogResult.OK)
+                    return;
 
-                    using (FileStream stream = new FileStream(sfd.FileName, FileMode.Create))
+                try
+                {
+                    Document pdfDoc = new Document(PageSize.A4, 10f, 10f, 10f, 10f);
+
+                    using (FileStream stream = new FileStream(sfd.FileName, FileMode.Create, FileAccess.Write))
                     {
                         PdfWriter.GetInstance(pdfDoc, stream);
                         pdfDoc.Open();
 
                         string fontPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts), "malgun.ttf");
+                        if (!File.Exists(fontPath))
+                            throw new FileNotFoundException("맑은 고딕 폰트 파일을 찾을 수 없습니다.", fontPath);
+
                         BaseFont bf = BaseFont.CreateFont(fontPath, BaseFont.IDENTITY_H, BaseFont.EMBEDDED);
                         iTextSharp.text.Font titleFont = new iTextSharp.text.Font(bf, 16, iTextSharp.text.Font.BOLD);
                         iTextSharp.text.Font cellFont = new iTextSharp.text.Font(bf, 10, iTextSharp.text.Font.NORMAL);
@@ -335,15 +380,20 @@ namespace SushiKioskAdmin.Views
                         PdfPTable pdfTable = new PdfPTable(dgvSalesReport.Columns.Count) { WidthPercentage = 100 };
 
                         foreach (DataGridViewColumn col in dgvSalesReport.Columns)
-                            pdfTable.AddCell(new PdfPCell(new Phrase(col.HeaderText, cellFont)) { BackgroundColor = BaseColor.LIGHT_GRAY });
+                        {
+                            pdfTable.AddCell(new PdfPCell(new Phrase(col.HeaderText, cellFont))
+                            {
+                                BackgroundColor = BaseColor.LIGHT_GRAY
+                            });
+                        }
 
                         foreach (DataGridViewRow row in dgvSalesReport.Rows)
                         {
-                            if (!row.IsNewRow)
-                            {
-                                foreach (DataGridViewCell cell in row.Cells)
-                                    pdfTable.AddCell(new PdfPCell(new Phrase(cell.Value?.ToString() ?? "", cellFont)));
-                            }
+                            if (row.IsNewRow)
+                                continue;
+
+                            foreach (DataGridViewCell cell in row.Cells)
+                                pdfTable.AddCell(new PdfPCell(new Phrase(cell.Value?.ToString() ?? "", cellFont)));
                         }
 
                         pdfDoc.Add(pdfTable);
@@ -351,6 +401,10 @@ namespace SushiKioskAdmin.Views
                     }
 
                     MessageBox.Show("PDF 파일로 성공적으로 저장되었습니다.", "완료");
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("PDF 파일 저장 중 오류가 발생했습니다.\n" + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }

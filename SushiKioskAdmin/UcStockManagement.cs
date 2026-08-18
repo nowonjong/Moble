@@ -59,7 +59,7 @@ namespace SushiKioskAdmin.Views
             // 파일이 없으면 알림
             if (!File.Exists(csvPath))
             {
-                MessageBox.Show("stock_test.csv 파일을 찾을 수 없습니다.", "경고");
+                MessageBox.Show("stock.csv 파일을 찾을 수 없습니다.", "경고");
                 return;
             }
 
