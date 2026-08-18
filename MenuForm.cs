@@ -610,10 +610,9 @@ namespace sushikiosk
 >>>>>>> Stashed changes
                 }
             }
-            return discounts;
         }
 
-        private void SaveCurrentOrder(IReadOnlyDictionary<string, int> discounts)
+        private void SaveCurrentOrder()
         {
             foreach (OrderItem currentItem in currentOrderList)
             {
