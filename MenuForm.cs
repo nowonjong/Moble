@@ -538,81 +538,33 @@ namespace sushikiosk
 
         private Dictionary<string, int> CheckWinningEvent() // 이번에 새로 주문한 메뉴만 대상으로 당첨 이벤트를 확인
         {
-<<<<<<< Updated upstream
-=======
             Dictionary<string, int> discounts = new();
->>>>>>> Stashed changes
+            // 이벤트 대상 초밥 메뉴만 가져옴
+            List<OrderItem> eventItems = currentOrderList
+                .Where(item => item.Category == "활어/참치" || item.Category == "해산물" ||
+                               item.Category == "롤/마끼" || item.Category == "단품/기타초밥")
+                .ToList();
+
+            foreach (OrderItem item in eventItems)      // 이벤트 대상 메뉴를 하나씩 검사
             {
-                // 이벤트 대상 초밥 메뉴만 가져옴
-                List<OrderItem> eventItems = currentOrderList
-                    .Where(item => item.Category == "활어/참치" || item.Category == "해산물" ||
-                                   item.Category == "롤/마끼" || item.Category == "단품/기타초밥")
-                    .ToList();
+                int winningCount = 0;
 
-<<<<<<< Updated upstream
-                List<string> winningMessages = new List<string>();  // 당첨 결과 메시지를 저장
-
-=======
->>>>>>> Stashed changes
-                foreach (OrderItem item in eventItems)      // 이벤트 대상 메뉴를 하나씩 검사
+                for (int i = 0; i < item.Quantity; i++)     // 메뉴의 접시 수만큼 각각 5% 확률로 검사
                 {
-                    int winningCount = 0;
-
-                    for (int i = 0; i < item.Quantity; i++)     // 메뉴의 접시 수만큼 각각 5% 확률로 검사
+                    if (random.Next(100) < 5)
                     {
-                        if (random.Next(100) < 5)
-                        {
-                            winningCount++;
-                        }
+                        winningCount++;
                     }
-                    if (winningCount == 0)          // 당첨된 접시가 없으면 다음 메뉴 검사
-                        continue;
-
-<<<<<<< Updated upstream
-                    item.Quantity -= winningCount;  // 정상 결제 수량에서 당첨 수량 차감
-
-                    if (item.Quantity <= 0)         // 전부 당첨됐다면 현재 장바구니에서 제거
-                    {
-                        currentOrderList.Remove(item);
-                    }
-
-
-                    OrderItem freeItem =            // 이전 주문에서 같은 메뉴의 당첨 항목이 있는지 확인
-                        orderList.FirstOrDefault(order => order.Name == item.Name && order.IsFree);
-
-                    if (freeItem != null)
-                    {
-                        freeItem.Quantity += winningCount;      // 기존 당첨 항목에 수량 누적
-                    }
-                    else
-                    {
-                        orderList.Add(new OrderItem     // 처음 당첨된 메뉴라면 무료 항목 생성
-                        {
-                            Name = item.Name,
-                            Price = item.Price,
-                            Quantity = winningCount,
-                            Category = item.Category,
-                            IsFree = true
-                        });
-                    }
-
-                    // MessageBox에 표시할 결과 저장
-                    winningMessages.Add(item.Name + " " + winningCount + "접시");
                 }
-                if (winningMessages.Count > 0)      // 하나라도 당첨됐을 때만 표시
-                {
-                    MessageBox.Show("당첨!\n\n" + string.Join("\n", winningMessages) + "\n\n무료입니다!", "이벤트 당첨",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-=======
-                    discounts[item.Name] = winningCount;
+                if (winningCount == 0)          // 당첨된 접시가 없으면 다음 메뉴 검사
+                    continue;
 
->>>>>>> Stashed changes
-                }
+                discounts[item.Name] = winningCount;
             }
+            return discounts;
         }
 
-        private void SaveCurrentOrder()
+        private void SaveCurrentOrder(Dictionary<string, int> discounts)
         {
             foreach (OrderItem currentItem in currentOrderList)
             {

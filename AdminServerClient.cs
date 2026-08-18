@@ -51,10 +51,10 @@ public sealed class OrderResponse : AdminResponse
 public sealed class PaymentResponse : AdminResponse
 {
     public string ReceiptNo { get; set; } = "";
-    public int OriginalAmount { get; set; }
-    public int UsedPoint { get; set; }
-    public int TotalAmount { get; set; }
-    public int EarnedPoint { get; set; }
+    public double OriginalAmount { get; set; }
+    public double UsedPoint { get; set; }
+    public double TotalAmount { get; set; }
+    public double EarnedPoint { get; set; }
 }
 
 public sealed class AdminServerClient
@@ -113,8 +113,8 @@ public sealed class AdminServerClient
     public Task<PaymentResponse> CompletePaymentAsync(
         string identifier,
         int memberId,
-        int originalAmount,
-        int usedPoint,
+        double originalAmount,
+        double usedPoint,
         string paymentMethod,
         CancellationToken cancellationToken = default)
     {
