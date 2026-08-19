@@ -33,8 +33,8 @@ namespace Kiosk
         List<Button> buttons = new List<Button>();
 
         /// 각 테이블(1~34번)의 선택 상태를 기록하는 배열입니다.
-        bool[] table_state = new bool[35];
-        private int? selectedTableNumber;
+
+        private int? selectedTableIndex = null;
 
         /// <summary>
         /// 테이블 선택 알림 메시지의 다국어 템플릿입니다.
@@ -52,19 +52,17 @@ namespace Kiosk
         private void buttons_arrayform()
         {
 
-            for (int i = 1; i <= 34; i++)
+            for (int i = 1; i <= 10; i++)
             {
-                // 이름으로 컨트롤 검색 (예: "button1", "button2"...)
                 Control[] found = this.Controls.Find($"button{i}", true);
 
                 if (found.Length > 0 && found[0] is Button btn)
                 {
-                    btn.Tag = i; // 버튼 고유 번호(1~34)를 Tag에 저장 (클릭 시 식별용)
+                    btn.Tag = i;
 
-                    // 34개의 공용 클릭 이벤트 메서드를 연결합니다.
                     btn.Click += Here_In_Button_Click;
 
-                    buttons.Add(btn); // 리스트에 버튼 추가
+                    buttons.Add(btn);
                 }
             }
         }
@@ -80,39 +78,55 @@ namespace Kiosk
         /// </summary>
         /// <param name="sender">클릭 이벤트를 발생시킨 Button 객체입니다.</param>
         /// <param name="e">이벤트 데이터가 포함된 객체입니다.</param>
-        private void Here_In_Button_Click(object? sender, EventArgs e)
+        private void Here_In_Button_Click(object sender, EventArgs e)
         {
-            Button? clicked_Button = sender as Button;
-            if (clicked_Button == null) return;
+            Button clickedButton = sender as Button;
 
-            // 버튼의 Tag에 저장해둔 고유 인덱스 번호(1~34) 가져오기
-            int btn_Index = (int)clicked_Button.Tag;
+            if (clickedButton == null)
+                return;
 
-            foreach (Button tableButton in buttons)
-                tableButton.BackColor = SystemColors.Control;
+            int tableNumber = (int)clickedButton.Tag;
 
-            // 해당 버튼의 상태를 토글(클릭할 때마다 true/false 전환) 또는 true로 고정
-            // 여기서는 클릭 시 true로 변경하고 이미지를 바꾸는 예시입니다.
-            table_state[btn_Index] = true;
-            clicked_Button.BackColor = Color.LightSteelBlue;
+            string tableCode = $"T{tableNumber:D2}";
+
+            TableStateData tableData = TableStateStore.Load();
+
+            // 이미 사용 중인 테이블은 선택 불가능
+            if (tableData.Tables.ContainsKey(tableCode) &&
+                tableData.Tables[tableCode] == "OCCUPIED")
+            {
+                MessageBox.Show(
+                    $"{tableNumber}번 테이블은 현재 사용 중입니다.",
+                    "테이블 선택",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+            // 기존 선택 색상 초기화
+            foreach (Button button in buttons)
+            {
+                button.BackColor = SystemColors.Control;
+            }
+
+            // 현재 선택한 테이블 저장
+            selectedTableIndex = tableNumber;
+
+            clickedButton.BackColor = Color.LightSteelBlue;
             btn_choice.BackColor = Color.LightSteelBlue;
-            selectedTableNumber = btn_Index;
-            // 현재 언어 인덱스에 맞는 포맷을 가져와 바인딩
+
             int lang = LanguageManager.CurrentLanguageIndex;
-            string message = string.Format(tableSelectFormats[lang], btn_Index, table_state[btn_Index]);
-            int btn_Index1 = btn_Index;
+
+            string message = string.Format(
+                tableSelectFormats[lang],
+                tableNumber,
+                true
+            );
+
             MessageBox.Show(message);
 
-
-        }
-
-
-        private void btn_choice_Click(object sender, EventArgs e)
-        {
-            // 테이블 선택 완료 후 메뉴 주문 화면(MenuForm) 표시 및 현재 창 숨김
-            //MenuForm menuForm = new MenuForm();
-            //menuForm.Show();
-            //this.Hide();
         }
 
         private void btn_back_Click(object sender, EventArgs e)
@@ -139,16 +153,61 @@ namespace Kiosk
 
         private void btn_choice_Click_1(object sender, EventArgs e)
         {
-            // 테이블 선택 완료 후 메뉴 주문 화면(MenuForm) 표시 및 현재 창 숨김
-            if (selectedTableNumber is null)
+            // 테이블을 선택하지 않은 경우
+            if (selectedTableIndex == null)
             {
-                MessageBox.Show("테이블을 먼저 선택해주세요.");
+                MessageBox.Show(
+                    "테이블을 먼저 선택해주세요.",
+                    "테이블 선택",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
                 return;
             }
 
-            KioskSession.BeginTableOrder(selectedTableNumber.Value);
+            // 선택한 테이블 번호
+            int tableNumber = selectedTableIndex.Value;
+
+            // T01, T02 ... 형식으로 테이블 코드 생성
+            string tableCode = $"T{tableNumber:D2}";
+
+
+            // 현재 테이블 상태 확인
+            TableStateData tableData = TableStateStore.Load();
+
+            if (tableData.Tables.ContainsKey(tableCode) &&
+                tableData.Tables[tableCode] == "OCCUPIED")
+            {
+                MessageBox.Show(
+                    $"{tableNumber}번 테이블은 이미 사용 중입니다.",
+                    "테이블 선택",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning
+                );
+
+                return;
+            }
+
+
+            // =====================================
+            // 기존 키오스크의 매장 주문 세션 시작
+            // =====================================
+            KioskSession.BeginTableOrder(tableNumber);
+
+
+            // =====================================
+            // 웨이팅 시스템용 테이블 상태
+            // 해당 테이블을 사용 중으로 변경
+            // =====================================
+            TableStateStore.Occupy(tableCode);
+
+
+            // 메뉴 화면으로 이동
             MenuForm menuForm = new MenuForm();
+
             menuForm.Show();
+
             this.Hide();
         }
     }

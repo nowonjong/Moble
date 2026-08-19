@@ -153,7 +153,7 @@ namespace Kiosk
 
             int finalAmount = KioskSession.OriginalAmount - usedPoint;
             DialogResult confirmed = MessageBox.Show(
-                $"{paymentMethod} 결제를 완료했습니까?\n\n결제 금액: {finalAmount:N0}원",
+                $"{paymentMethod} 결제를 진행하시겠습니까?\n\n결제 금액: {finalAmount:N0}원",
                 "결제 확인",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
@@ -173,17 +173,43 @@ namespace Kiosk
 
                 if (!response.IsSuccess)
                 {
-                    MessageBox.Show(response.Message, "결제 처리 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show(
+                        response.Message,
+                        "결제 처리 실패",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+
                     return;
                 }
 
+
+                // ==========================================
+                // 매장 주문이면 현재 테이블을 빈자리로 변경
+                // ==========================================
+                if (!KioskSession.IsTakeout &&
+                    KioskSession.TableNumber.HasValue)
+                {
+                    int tableNumber = KioskSession.TableNumber.Value;
+
+                    string tableCode = $"T{tableNumber:00}";
+
+                    TableStateStore.Release(tableCode);
+                }
+
+
                 MessageBox.Show(
-                    $"결제가 완료되었습니다.\n\n영수증 번호: {response.ReceiptNo}\n결제 금액: {response.TotalAmount:N0}원\n적립 포인트: {response.EarnedPoint:N0}P",
+                    $"결제가 완료되었습니다.\n\n" +
+                    $"영수증 번호: {response.ReceiptNo}\n" +
+                    $"결제 금액: {response.TotalAmount:N0}원\n" +
+                    $"적립 포인트: {response.EarnedPoint:N0}P",
                     "결제 완료",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
+
+                // ★ 반드시 테이블 해제보다 나중에 실행
                 KioskSession.Reset();
+
                 ReturnToStart();
             }
             catch (Exception ex)
@@ -200,6 +226,25 @@ namespace Kiosk
                 if (!IsDisposed)
                     SetPaymentButtonsEnabled(true);
             }
+        }
+
+        private void ReleaseCurrentTable()
+        {
+        
+            if (MessageBox.Show(
+                "현재 주문을 모두 취소하고 처음 화면으로 이동할까요?",
+                "전체 취소",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning) != DialogResult.Yes)
+                return;
+
+            // 매장 주문이었다면 테이블도 해제
+            ReleaseCurrentTable();
+
+            KioskSession.Reset();
+
+            ReturnToStart();
+        
         }
 
         private void CancelAll_Click(object? sender, EventArgs e)
