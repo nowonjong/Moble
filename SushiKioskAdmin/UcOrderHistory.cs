@@ -76,6 +76,17 @@ namespace SushiKioskAdmin.Views
                 lastItemsModifiedTime = File.GetLastWriteTime(itemsPath);
         }
 
+        private void UcOrderHistory_Load(object sender, EventArgs e)
+        {
+            dgvHistoryList.ColumnHeadersHeightSizeMode =
+                DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
+            dgvHistoryList.ColumnHeadersHeight = 35;
+
+            foreach (DataGridViewColumn col in dgvHistoryList.Columns)
+                col.HeaderCell.Style.WrapMode = DataGridViewTriState.False;
+        }
+
         private void LoadHistoryFromCsv()
         {
             historyTable.Clear();
@@ -183,17 +194,28 @@ namespace SushiKioskAdmin.Views
             StringBuilder sb = new StringBuilder();
 
             sb.AppendLine("==========================================");
-            sb.AppendLine("            [ 초밥 키오스크 영수증 ]");
+            sb.AppendLine("          [ 초밥 키오스크 영수증 ]");
             sb.AppendLine("==========================================");
             sb.AppendLine($"영수증번호 : {orderNo}");
             sb.AppendLine($"결제일시 : {orderDate}");
             sb.AppendLine($"주문유형 : [{source}] - {type}");
 
             if (memberId > 0)
-                sb.AppendLine($"회원번호 : {memberId}");
+            {
+                if (GetMemberInfo(memberId, out string memberName, out string phone))
+                {
+                    sb.AppendLine($"회원번호 : {memberId}");
+                    sb.AppendLine($"회원명   : {memberName}");
+                    sb.AppendLine($"연락처   : {phone}");
+                }
+                else
+                {
+                    sb.AppendLine($"회원번호 : {memberId}");
+                }
+            }
 
             sb.AppendLine("------------------------------------------");
-            sb.AppendLine(" 상품명                수량     금액(SubTotal)");
+            sb.AppendLine("상품명                 수량        금액");
             sb.AppendLine("------------------------------------------");
 
             LoadReceiptItems(orderNo, sb);
@@ -243,15 +265,17 @@ namespace SushiKioskAdmin.Views
                     continue;
 
                 string menuName = parts[1].Trim();
-
+                int price = int.TryParse(parts[2].Trim(), out int p) ? p : 0;
                 int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
                 int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
-                int subTotal = int.TryParse(parts[5].Trim(), out int st) ? st : 0;
+
+                int originalItemAmount = price * qty;
+                int discountAmount = price * discountQty;
+
+                sb.AppendLine(FormatReceiptItem(menuName, qty, originalItemAmount));
 
                 if (discountQty > 0)
-                    sb.AppendLine($" {menuName} (할인 {discountQty}개 포함)  {qty}개    {subTotal:N0}원");
-                else
-                    sb.AppendLine($" {menuName}                    {qty}개    {subTotal:N0}원");
+                    sb.AppendLine(FormatReceiptItem("└ 무료접시", discountQty, -discountAmount));
 
                 hasItem = true;
             }
@@ -359,15 +383,61 @@ namespace SushiKioskAdmin.Views
                 : DateTime.MinValue;
         }
 
-        private void UcOrderHistory_Load(object sender, EventArgs e)
+        private string FormatReceiptItem(string menuName, int qty, int subTotal)
         {
-            dgvHistoryList.ColumnHeadersHeightSizeMode =
-                DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+            string name = PadRightDisplay(menuName, 24);
+            string quantity = $"{qty}개".PadLeft(5);
+            string amount = $"{subTotal:N0}원".PadLeft(10);
 
-            dgvHistoryList.ColumnHeadersHeight = 35;
+            return $" {name}{quantity}{amount}";
+        }
 
-            foreach (DataGridViewColumn col in dgvHistoryList.Columns)
-                col.HeaderCell.Style.WrapMode = DataGridViewTriState.False;
+        private int GetDisplayWidth(string text)
+        {
+            int width = 0;
+
+            foreach (char c in text)
+                width += c >= 0xAC00 && c <= 0xD7A3 ? 2 : 1;
+
+            return width;
+        }
+
+        private string PadRightDisplay(string text, int totalWidth)
+        {
+            int width = GetDisplayWidth(text);
+            int padding = Math.Max(0, totalWidth - width);
+            return text + new string(' ', padding);
+        }
+
+        private bool GetMemberInfo(int memberId, out string memberName, out string phone)
+        {
+            memberName = "";
+            phone = "";
+
+            string memberPath = Path.Combine(Application.StartupPath, "member.csv");
+
+            if (!File.Exists(memberPath))
+                return false;
+
+            foreach (string line in File.ReadAllLines(memberPath, Encoding.UTF8))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                string[] parts = line.Split(',');
+
+                if (parts.Length < 7)
+                    continue;
+
+                if (!int.TryParse(parts[0].Trim(), out int id) || id != memberId)
+                    continue;
+
+                memberName = parts[1].Trim();
+                phone = parts[2].Trim();
+                return true;
+            }
+
+            return false;
         }
     }
 }
