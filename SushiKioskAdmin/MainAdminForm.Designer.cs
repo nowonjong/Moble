@@ -89,9 +89,9 @@
             lblTitle.ForeColor = Color.White;
             lblTitle.Location = new Point(21, 12);
             lblTitle.Name = "lblTitle";
-            lblTitle.Size = new Size(197, 25);
+            lblTitle.Size = new Size(216, 25);
             lblTitle.TabIndex = 3;
-            lblTitle.Text = "초밥집 관리자 시스템";
+            lblTitle.Text = "스시모블 관리자 시스템";
             // 
             // pnlSidebar
             // 

@@ -194,7 +194,7 @@ namespace SushiKioskAdmin.Views
             StringBuilder sb = new StringBuilder();
 
             sb.AppendLine("==========================================");
-            sb.AppendLine("          [ 초밥 키오스크 영수증 ]");
+            sb.AppendLine("              [ 주문 영수증 ]");
             sb.AppendLine("==========================================");
             sb.AppendLine($"영수증번호 : {orderNo}");
             sb.AppendLine($"결제일시 : {orderDate}");
