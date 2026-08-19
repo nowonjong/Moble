@@ -28,6 +28,7 @@
         /// </summary>
         private void InitializeComponent()
         {
+            components = new System.ComponentModel.Container();
             pnlTop = new Panel();
             btnExit = new Button();
             lblNotice = new Label();
@@ -41,6 +42,7 @@
             btnNavTable = new Button();
             btnNavOrder = new Button();
             pnlMainContainer = new Panel();
+            noticeBlinkTimer = new System.Windows.Forms.Timer(components);
             pnlTop.SuspendLayout();
             pnlSidebar.SuspendLayout();
             SuspendLayout();
@@ -205,6 +207,11 @@
             pnlMainContainer.Size = new Size(848, 679);
             pnlMainContainer.TabIndex = 2;
             // 
+            // noticeBlinkTimer
+            // 
+            noticeBlinkTimer.Interval = 500;
+            noticeBlinkTimer.Tick += noticeBlinkTimer_Tick;
+            // 
             // MainAdminForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -237,5 +244,6 @@
         private Label lblTitle;
         private Button btnExit;
         private Label lblNotice;
+        private System.Windows.Forms.Timer noticeBlinkTimer;
     }
 }

@@ -19,6 +19,8 @@ namespace SushiKioskAdmin
         private Button currentSelectedButton;
         private TcpListener server;
         private bool isServerRunning = false;
+        private bool noticeBlinkState = true;
+        private int pendingOrderCount = 0;
 
         private const int SERVER_PORT = 9000;
         private const int MAX_MESSAGE_SIZE = 1024 * 1024;
@@ -1868,7 +1870,22 @@ namespace SushiKioskAdmin
         public void UpdateNotice(int waitingCount)
         {
             lblNotice.Text = $"신규 주문 [{waitingCount}건] 대기 중";
-            lblNotice.ForeColor = Color.Yellow;
+
+            if (waitingCount > 0)
+            {
+                if (!noticeBlinkTimer.Enabled)
+                {
+                    noticeBlinkState = false;
+                    lblNotice.ForeColor = Color.Yellow;
+                    noticeBlinkTimer.Start();
+                }
+            }
+            else
+            {
+                noticeBlinkTimer.Stop();
+                noticeBlinkState = false;
+                lblNotice.ForeColor = Color.Yellow;
+            }
         }
 
         private void RefreshOrderBoard()
@@ -1887,6 +1904,16 @@ namespace SushiKioskAdmin
                     break;
                 }
             }
+        }
+
+        private void noticeBlinkTimer_Tick(object sender, EventArgs e)
+        {
+            noticeBlinkState = !noticeBlinkState;
+
+            if (noticeBlinkState)
+                lblNotice.ForeColor = Color.Red;
+            else
+                lblNotice.ForeColor = Color.Yellow;
         }
 
         // =========================================================
