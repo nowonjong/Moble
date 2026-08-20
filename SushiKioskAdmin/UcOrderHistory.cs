@@ -249,7 +249,9 @@ namespace SushiKioskAdmin.Views
                 return;
             }
 
-            bool hasItem = false;
+            // 같은 메뉴를 합치기 위한 Dictionary
+            Dictionary<string, (int Price, int Qty, int DiscountQty)> groupedItems
+                = new Dictionary<string, (int Price, int Qty, int DiscountQty)>();
 
             foreach (string line in File.ReadAllLines(itemsPath, Encoding.UTF8))
             {
@@ -266,22 +268,62 @@ namespace SushiKioskAdmin.Views
 
                 string menuName = parts[1].Trim();
                 int price = int.TryParse(parts[2].Trim(), out int p) ? p : 0;
-                int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 1;
+                int qty = int.TryParse(parts[3].Trim(), out int q) ? q : 0;
                 int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
 
-                int originalItemAmount = price * qty;
-                int discountAmount = price * discountQty;
+                if (groupedItems.ContainsKey(menuName))
+                {
+                    var old = groupedItems[menuName];
 
-                sb.AppendLine(FormatReceiptItem(menuName, qty, originalItemAmount));
-
-                if (discountQty > 0)
-                    sb.AppendLine(FormatReceiptItem("└ 무료접시", discountQty, -discountAmount));
-
-                hasItem = true;
+                    groupedItems[menuName] =
+                    (
+                        Price: price,
+                        Qty: old.Qty + qty,
+                        DiscountQty: old.DiscountQty + discountQty
+                    );
+                }
+                else
+                {
+                    groupedItems[menuName] =
+                    (
+                        Price: price,
+                        Qty: qty,
+                        DiscountQty: discountQty
+                    );
+                }
             }
 
-            if (!hasItem)
+            if (groupedItems.Count == 0)
+            {
                 sb.AppendLine(" 해당 주문의 상세 품목을 찾을 수 없습니다.");
+                return;
+            }
+
+            foreach (var item in groupedItems)
+            {
+                string menuName = item.Key;
+                int price = item.Value.Price;
+                int qty = item.Value.Qty;
+                int discountQty = item.Value.DiscountQty;
+
+                int originalAmount = price * qty;
+                int discountAmount = price * discountQty;
+
+                sb.AppendLine(
+                    FormatReceiptItem(menuName, qty, originalAmount)
+                );
+
+                if (discountQty > 0)
+                {
+                    sb.AppendLine(
+                        FormatReceiptItem(
+                            "└ 무료접시",
+                            discountQty,
+                            -discountAmount
+                        )
+                    );
+                }
+            }
         }
 
         private void btnPrintReceipt_Click(object sender, EventArgs e)

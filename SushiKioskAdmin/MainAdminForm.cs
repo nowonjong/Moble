@@ -972,6 +972,7 @@ namespace SushiKioskAdmin
 
                         int.TryParse(parts[0].Trim(), out int memberId);
                         int.TryParse(parts[4].Trim(), out int point);
+                        int availablePoint = GetAvailableMemberPoint(memberId);
 
                         return new JObject
                         {
@@ -980,6 +981,7 @@ namespace SushiKioskAdmin
                             ["MemberName"] = parts[1].Trim(),
                             ["Phone"] = savedPhone,
                             ["Point"] = point,
+                            ["AvailablePoint"] = availablePoint,
                             ["Address"] = parts[5].Trim(),
                             ["JoinDate"] = parts[6].Trim(),
                             ["Message"] = "Login successful."
@@ -1031,6 +1033,7 @@ namespace SushiKioskAdmin
 
                         int.TryParse(parts[0].Trim(), out int memberId);
                         int.TryParse(parts[4].Trim(), out int point);
+                        int availablePoint = GetAvailableMemberPoint(memberId);
 
                         return new JObject
                         {
@@ -1039,6 +1042,7 @@ namespace SushiKioskAdmin
                             ["MemberName"] = parts[1].Trim(),
                             ["Phone"] = parts[2].Trim(),
                             ["Point"] = point,
+                            ["AvailablePoint"] = availablePoint,
                             ["Message"] = "Member found."
                         }.ToString(Newtonsoft.Json.Formatting.None);
                     }

@@ -143,6 +143,7 @@
             // 
             // txtInputAddress
             // 
+            txtInputAddress.ImeMode = ImeMode.Hangul;
             txtInputAddress.Location = new Point(77, 102);
             txtInputAddress.Name = "txtInputAddress";
             txtInputAddress.Size = new Size(174, 23);
