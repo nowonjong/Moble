@@ -15,6 +15,10 @@ namespace Kiosk
     {
         private readonly Pop_MemberNum? memberForm;
         private bool paymentRunning;
+
+        // 보고서 시각자료용: Payment 폼 진입(생성) 횟수 추적
+        public static int OpenCount = 0;
+
         // 다국어 텍스트 정의 (0: 영어, 1: 일본어, 2: 한국어)
         private readonly string[] label4Texts = { "Please select a payment method!", "お支払い方法を選択してください！", "결제 방식을 선택해주세요 !" };
         private readonly string[] label2Texts = { "Payment Method", "お支払い方法", "결제 방식" };
@@ -39,15 +43,15 @@ namespace Kiosk
         private readonly string[] receiveTexts = { "Earn Complete", "積立完了", "적립 완료" };
 
         // 동적으로 추가될 수 있는 회원/적립 관련 예비 컨트롤 필드 선언 (컴파일 오류 방지)
-        private Label lb_cusId;
-        private Label lb_phonenum;
-        private Label lb_sum;
-        private Label lb_cusName;
-        private Label lb_savePoint;
-        private Button btn_del2;
-        private Button button32;
-        private Button btn_savepoint;
-        private Button btn_receive;
+        private Label? lb_cusId = null;
+        private Label? lb_phonenum = null;
+        private Label? lb_sum = null;
+        private Label? lb_cusName = null;
+        private Label? lb_savePoint = null;
+        private Button? btn_del2 = null;
+        private Button? button32 = null;
+        private Button? btn_savepoint = null;
+        private Button? btn_receive = null;
 
         public Payment() : this(null)
         {
@@ -55,9 +59,11 @@ namespace Kiosk
 
         public Payment(Pop_MemberNum? memberForm)
         {
+            OpenCount++; // 폼이 켜질 때마다(생성될 때마다) 횟수 1 증가
+
             this.memberForm = memberForm;
             InitializeComponent();
-            
+
 
             axWindowsMediaPlayer1.URL = System.IO.Path.Combine(Application.StartupPath, "Images", "스시결제.mp4");
             // 2. 아래 하단 바(컨트롤 레이아웃) 숨기기 ("none"으로 설정 시 영상만 출력)
@@ -76,10 +82,34 @@ namespace Kiosk
             // 언어 변경 이벤트 구독
             LanguageManager.LanguageChanged += ApplyLanguage;
 
-            // 폼이 닫힐 때 이벤트 구독 해제 (메모리 누수 방지)
+            //// --- 실시간 메모리 모니터링 UI 생성 ---
+            //Label memoryLabel = new Label();
+            //memoryLabel.AutoSize = true;
+            //memoryLabel.Location = new System.Drawing.Point(12, 12); // 좌측 상단
+            //memoryLabel.Font = new System.Drawing.Font("맑은 고딕", 14F, System.Drawing.FontStyle.Bold);
+            //memoryLabel.ForeColor = System.Drawing.Color.Red; // 눈에 잘 띄게 빨간색
+            //memoryLabel.BackColor = System.Drawing.Color.White; // 가독성을 위해 배경색 지정
+            //this.Controls.Add(memoryLabel);
+            //memoryLabel.BringToFront();
+
+            //System.Windows.Forms.Timer gcTimer = new System.Windows.Forms.Timer();
+            //gcTimer.Interval = 2000; // 2초마다 갱신되도록 수정
+            //gcTimer.Tick += (s, e) =>
+            //{
+            //    long memoryUsed = GC.GetTotalMemory(true);
+            //    double memoryUsedMB = memoryUsed / (1024.0 * 1024.0);
+            //    memoryLabel.Text = $"결제창 누적 진입 횟수: {OpenCount}회\n현재 앱 메모리: {memoryUsedMB:F2} MB";
+            //    System.Diagnostics.Debug.WriteLine($"[{DateTime.Now:HH:mm:ss}] [Memory Check] 결제창 진입 {OpenCount}회차 - 현재 사용 메모리: {memoryUsedMB:F2} MB");
+            //};
+            //gcTimer.Start();
+
+            // 폼이 닫힐 때 이벤트 구독 해제 (메모리 누수 방지) 및 타이머 해제
             this.FormClosed += (s, e) =>
             {
+                // gcTimer.Stop();
+                // gcTimer.Dispose();
                 LanguageManager.LanguageChanged -= ApplyLanguage;
+                System.Diagnostics.Debug.WriteLine("[Memory Check] Payment 폼 닫힘 - 정적 이벤트 해제 완료");
             };
 
             // 최초 1회 현재 언어 적용
@@ -153,7 +183,7 @@ namespace Kiosk
 
             int finalAmount = KioskSession.OriginalAmount - usedPoint;
             DialogResult confirmed = MessageBox.Show(
-                $"{paymentMethod} 결제를 진행하시겠습니까?\n\n결제 금액: {finalAmount:N0}원",
+                $"{paymentMethod} 결제를 완료했습니까?\n\n결제 금액: {finalAmount:N0}원",
                 "결제 확인",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
@@ -173,43 +203,17 @@ namespace Kiosk
 
                 if (!response.IsSuccess)
                 {
-                    MessageBox.Show(
-                        response.Message,
-                        "결제 처리 실패",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-
+                    MessageBox.Show(response.Message, "결제 처리 실패", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-
-                // ==========================================
-                // 매장 주문이면 현재 테이블을 빈자리로 변경
-                // ==========================================
-                if (!KioskSession.IsTakeout &&
-                    KioskSession.TableNumber.HasValue)
-                {
-                    int tableNumber = KioskSession.TableNumber.Value;
-
-                    string tableCode = $"T{tableNumber:00}";
-
-                    TableStateStore.Release(tableCode);
-                }
-
-
                 MessageBox.Show(
-                    $"결제가 완료되었습니다.\n\n" +
-                    $"영수증 번호: {response.ReceiptNo}\n" +
-                    $"결제 금액: {response.TotalAmount:N0}원\n" +
-                    $"적립 포인트: {response.EarnedPoint:N0}P",
+                    $"결제가 완료되었습니다.\n\n영수증 번호: {response.ReceiptNo}\n결제 금액: {response.TotalAmount:N0}원\n적립 포인트: {response.EarnedPoint:N0}P",
                     "결제 완료",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
 
-
-                // ★ 반드시 테이블 해제보다 나중에 실행
                 KioskSession.Reset();
-
                 ReturnToStart();
             }
             catch (Exception ex)
@@ -226,25 +230,6 @@ namespace Kiosk
                 if (!IsDisposed)
                     SetPaymentButtonsEnabled(true);
             }
-        }
-
-        private void ReleaseCurrentTable()
-        {
-        
-            if (MessageBox.Show(
-                "현재 주문을 모두 취소하고 처음 화면으로 이동할까요?",
-                "전체 취소",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning) != DialogResult.Yes)
-                return;
-
-            // 매장 주문이었다면 테이블도 해제
-            ReleaseCurrentTable();
-
-            KioskSession.Reset();
-
-            ReturnToStart();
-        
         }
 
         private void CancelAll_Click(object? sender, EventArgs e)

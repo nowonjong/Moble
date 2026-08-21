@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace Kiosk;
 
 public static class KioskSession
