@@ -151,7 +151,9 @@ namespace SushiKioskAdmin.Views
             sb.AppendLine($"Table {tableNo:D2} 주문 내역");
             sb.AppendLine("----------------------------------------");
 
-            bool hasItem = false;
+            // 같은 메뉴끼리 합치기
+            Dictionary<string, (int Price, int Quantity, int DiscountQty, int SubTotal)> groupedItems
+                = new Dictionary<string, (int, int, int, int)>();
 
             if (File.Exists(itemsPath))
             {
@@ -169,6 +171,7 @@ namespace SushiKioskAdmin.Views
 
                     string keyId = parts[0].Trim();
 
+                    // 현재 테이블 주문만 조회
                     if (!keyId.StartsWith(tablePrefix, StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -178,22 +181,65 @@ namespace SushiKioskAdmin.Views
                     int discountQty = int.TryParse(parts[4].Trim(), out int dq) ? dq : 0;
                     int subTotal = int.TryParse(parts[5].Trim(), out int st) ? st : 0;
 
-                    sb.AppendLine($"{menuName}  {quantity}개  {subTotal:N0}원");
+                    if (groupedItems.ContainsKey(menuName))
+                    {
+                        var old = groupedItems[menuName];
 
-                    if (discountQty > 0)
-                        sb.AppendLine($"  └ 할인 적용: {discountQty}개 / 단가 {price:N0}원");
-
-                    hasItem = true;
+                        groupedItems[menuName] = (
+                            Price: price,
+                            Quantity: old.Quantity + quantity,
+                            DiscountQty: old.DiscountQty + discountQty,
+                            SubTotal: old.SubTotal + subTotal
+                        );
+                    }
+                    else
+                    {
+                        groupedItems[menuName] = (
+                            Price: price,
+                            Quantity: quantity,
+                            DiscountQty: discountQty,
+                            SubTotal: subTotal
+                        );
+                    }
                 }
             }
 
-            if (!hasItem)
+            if (groupedItems.Count == 0)
+            {
                 sb.AppendLine("주문 내역이 없습니다.");
+            }
+            else
+            {
+                foreach (var item in groupedItems)
+                {
+                    string menuName = item.Key;
+                    int price = item.Value.Price;
+                    int quantity = item.Value.Quantity;
+                    int discountQty = item.Value.DiscountQty;
+                    int subTotal = item.Value.SubTotal;
+
+                    sb.AppendLine($"{menuName}  {quantity}개  {subTotal:N0}원");
+
+                    if (discountQty > 0)
+                    {
+                        int discountAmount = discountQty * price;
+
+                        sb.AppendLine(
+                            $"  └ 무료접시: {discountQty}개  -{discountAmount:N0}원"
+                        );
+                    }
+                }
+            }
 
             sb.AppendLine("----------------------------------------");
             sb.AppendLine($"총 금액: {totalAmount:N0}원");
 
-            MessageBox.Show(sb.ToString(), $"Table {tableNo:D2} 상세", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(
+                sb.ToString(),
+                $"Table {tableNo:D2} 상세",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information
+            );
         }
 
         private string ConvertIdentifierToTableKey(string identifier)
