@@ -1,0 +1,9 @@
+# Visual Studio user-specific files and caches
+.vs/
+*.user
+*.suo
+
+# .NET build outputs
+**/bin/
+**/obj/
+
