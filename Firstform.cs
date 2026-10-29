@@ -12,7 +12,7 @@ namespace Kiosk
         {
             InitializeComponent();
 
-            // 첫 화면에서, 언어 선택 버튼 이벤트 바인딩
+            // 첫 화면에서, 언어 선택 버튼 이벤트 바인딩.
             btn_EngCh.Click += (s, e) => LanguageManager.SetLanguage(0); // English
             btn_JapCh.Click += (s, e) => LanguageManager.SetLanguage(1); // Japanese
             btn_KorCh.Click += (s, e) => LanguageManager.SetLanguage(2); // Korean
